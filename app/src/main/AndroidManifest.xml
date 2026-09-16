@@ -25,12 +25,27 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long-press on either tile opens the app. -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
         </activity>
 
         <service
             android:name=".audio.ListenService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".tile.ListenTile"
+            android:exported="true"
+            android:icon="@drawable/ic_bars"
+            android:label="@string/listen_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".tile.LastClipTile"

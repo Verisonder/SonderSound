@@ -5,4 +5,8 @@
     <string name="heard_channel">Heard</string>
     <string name="heard_notification">Heard %1$s</string>
     <string name="tile_label">Last clip</string>
+    <string name="listen_tile_label">SonderSound</string>
+    <string name="tile_on">Listening</string>
+    <string name="tile_off">Off</string>
+    <string name="start_refused">Tap to turn on listening</string>
 </resources>

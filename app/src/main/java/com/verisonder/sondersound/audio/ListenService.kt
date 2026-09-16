@@ -29,6 +29,7 @@ import com.verisonder.sondersound.detect.Sounds
 import com.verisonder.sondersound.detect.StreamDetector
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
+import com.verisonder.sondersound.tile.ListenTile
 import com.verisonder.sondersound.ui.MainActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -144,7 +145,10 @@ class ListenService : Service() {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
             )
         } catch (e: Exception) {
+            // Android may refuse a microphone service started from the background, for
+            // instance from the tile. The switch stays on, so opening the app starts it.
             note("Android refused to start. Open the app and switch on.")
+            postStartRefused()
             stopSelf()
             return START_NOT_STICKY
         }
@@ -186,6 +190,7 @@ class ListenService : Service() {
         recording = true
         getSystemService(AudioManager::class.java).registerAudioRecordingCallback(silencing, main)
         _state.value = State(running = true, needed = Features.threshold(Settings.sensitivity(this)))
+        ListenTile.update(this)
 
         reader = Thread({
             val chunk = ShortArray(RATE / 10)
@@ -251,6 +256,27 @@ class ListenService : Service() {
         postHeard(sound)
     }
 
+    private fun postStartRefused() {
+        val manager = getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(HEARD_CHANNEL) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(HEARD_CHANNEL, getString(R.string.heard_channel), NotificationManager.IMPORTANCE_DEFAULT)
+                    .apply { setSound(null, null) }
+            )
+        }
+        val open = PendingIntent.getActivity(
+            this, 4, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(this, HEARD_CHANNEL)
+            .setSmallIcon(R.drawable.ic_bars)
+            .setContentTitle(getString(R.string.start_refused))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        runCatching { manager.notify(HEARD_ID + 1, notification) }
+    }
+
     private fun postHeard(sound: String) {
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(HEARD_CHANNEL) == null) {
@@ -288,6 +314,7 @@ class ListenService : Service() {
         ring = null
         val keptNote = _state.value.note
         _state.value = State(note = keptNote)
+        ListenTile.update(this)
         super.onDestroy()
     }
 
