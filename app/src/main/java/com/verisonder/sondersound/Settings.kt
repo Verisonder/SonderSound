@@ -10,6 +10,7 @@ import android.content.Context
 object Settings {
     private const val FILE = "settings"
 
+    private const val SETUP_DONE = "setup_done"
     private const val LISTENING = "listening"
     private const val SNOOZE_UNTIL = "snooze_until"
     private const val BUFFER_SECONDS = "buffer_seconds"
@@ -29,6 +30,10 @@ object Settings {
     enum class Script { ARABIC, LATIN }
 
     private fun of(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    fun setupDone(context: Context): Boolean = of(context).getBoolean(SETUP_DONE, false)
+    fun setSetupDone(context: Context, value: Boolean) =
+        of(context).edit().putBoolean(SETUP_DONE, value).apply()
 
     fun listening(context: Context): Boolean = of(context).getBoolean(LISTENING, false)
     fun setListening(context: Context, value: Boolean) =

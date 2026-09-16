@@ -12,6 +12,7 @@ object Palette {
     val pillOff = Color(0xFFE3E3E3)
     val pillOn = Color(0xFFA8C7FA)
     val onPill = Color(0xFF1B1B1B)
+    val text = Color(0xFFE6E6E6)
     val muted = Color(0xFFBDBDBD)
     val accent = Color(0xFF146C2E)
 }
@@ -23,6 +24,8 @@ fun SonderTheme(content: @Composable () -> Unit) {
             background = Palette.background,
             surface = Palette.background,
             primary = Palette.pillOn,
+            onBackground = Palette.text,
+            onSurface = Palette.text,
         ),
         content = content,
     )
