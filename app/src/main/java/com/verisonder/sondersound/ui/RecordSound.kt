@@ -74,7 +74,7 @@ fun RecordSound(onDone: () -> Unit, secondary: String, onSecondary: () -> Unit) 
             fontSize = 18.sp,
         )
         Text(
-            "Vary the distance and how loud.",
+            "Vary the distance. Whisper one.",
             color = Palette.muted,
             fontSize = 14.sp,
         )

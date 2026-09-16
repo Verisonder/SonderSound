@@ -17,7 +17,21 @@ takes every 240 ms.
 6. **Fire** when the score reaches the threshold: 0.75 at the cautious end, 0.50 at the eager
    end, 0.625 in the middle. At most once every 3 s.
 
-Windows quieter than RMS 200 are not evaluated, which is most of the day.
+A window is only evaluated when its loudest 10 ms is at least 4x (12 dB) above its quiet
+frames. This is relative on purpose. The first version skipped anything under RMS 200, and in
+replay that threw away every far or whispered call before comparing it:
+
+| Call | Fixed RMS 200 | Relative gate |
+|---|---|---|
+| normal | 0.85 | 0.85 |
+| far, -24 dB | not evaluated | 0.80 |
+| very far, -34 dB | not evaluated | 0.76 |
+| whisper | 0.77 | 0.77 |
+| quiet whisper | not evaluated | 0.73 |
+
+Other words stayed at or below 0.58 with the relative gate, and plain room noise is never
+evaluated. A far call buried under loud street noise still fails (0.31): at that point it
+is not in the audio.
 
 ## Why not MFCC and DTW
 

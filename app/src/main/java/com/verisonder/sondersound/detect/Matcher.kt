@@ -44,7 +44,7 @@ class Matcher(private val embedder: Embedder, private val background: FloatArray
 
     /** Null for silence or when nothing is enrolled. */
     fun score(window: FloatArray, sounds: List<Enrolled>): Best? {
-        if (sounds.isEmpty() || Features.rms(window) < Features.MIN_WINDOW_RMS) return null
+        if (sounds.isEmpty() || !Features.worthEvaluating(window)) return null
         val speech = speechVectors(window)
         if (speech.isEmpty()) return null
         var best: Best? = null

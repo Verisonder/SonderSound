@@ -18,7 +18,8 @@ object Features {
     const val FRAME = 160              // 10 ms
     const val MEL_WINDOW = 76          // mel frames per embedding
     const val MEL_STEP = 8             // mel frames between embeddings
-    const val MIN_WINDOW_RMS = 200.0   // below this a window is silence and is not evaluated
+    const val GATE_RATIO = 4.0         // loudest 10 ms frame vs the quiet ones, see worthEvaluating
+    const val GATE_FLOOR = 25.0        // below this even the loudest frame is the mic's own hiss
     const val PAD_NOISE = 30.0         // std of the noise a short take is padded with
 
     /** Sensitivity 0 is the most cautious. */
@@ -29,6 +30,21 @@ object Features {
         var sum = 0.0
         for (v in x) sum += v.toDouble() * v
         return sqrt(sum / x.size)
+    }
+
+    /**
+     * Whether a window has something in it worth scoring: its loudest 10 ms stands at least
+     * 4x (12 dB) above its quiet frames. Relative, not absolute, so a whisper or a voice
+     * across the room passes in a quiet place, and steady noise does not keep the models busy.
+     *
+     * Replaces a fixed RMS of 200, which in replay rejected every far or whispered call
+     * before it was ever compared.
+     */
+    fun worthEvaluating(x: FloatArray): Boolean {
+        val e = frameEnergies(x)
+        if (e.isEmpty()) return false
+        val sorted = e.sortedArray()
+        return sorted.last() >= max(GATE_RATIO * percentile(sorted, 0.20), GATE_FLOOR)
     }
 
     /** Root-mean-square per non-overlapping 10 ms frame, on raw sample values. */

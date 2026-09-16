@@ -23,6 +23,18 @@ class FeaturesTest {
     }
 
     @Test
+    fun aQuietWordInAQuietRoomIsWorthEvaluating() {
+        val x = silence(8000) + tone(3200, 300f) + silence(8000)
+        assertTrue(Features.worthEvaluating(x))
+    }
+
+    @Test
+    fun steadyNoiseAndSilenceAreNot() {
+        assertFalse(Features.worthEvaluating(silence(19200)))
+        assertFalse(Features.worthEvaluating(tone(19200, 3000f)))
+    }
+
+    @Test
     fun percentileMatchesNumpy() {
         // numpy.percentile([1,2,3,4,5,6,7,8,9,10], 10) == 1.9
         val sorted = DoubleArray(10) { (it + 1).toDouble() }

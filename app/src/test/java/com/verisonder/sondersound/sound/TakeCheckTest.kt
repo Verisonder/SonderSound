@@ -23,6 +23,16 @@ class TakeCheckTest {
     }
 
     @Test
+    fun aWhisperIsAccepted() {
+        val pcm = ShortArray(32000) { i ->
+            val hiss = ((i * 7919) % 41 - 20)            // faint, like the mic's own noise
+            val word = if (i in 12000..17000) (if (i % 3 == 0) 400 else -400) else 0
+            (hiss + word).toShort()
+        }
+        assertEquals(TakeCheck.Verdict.OK, TakeCheck.judge(pcm))
+    }
+
+    @Test
     fun heavyClippingIsTooLoud() {
         val pcm = ShortArray(32000) { if (it < 1000) 32767 else 0 }
         assertEquals(TakeCheck.Verdict.TOO_LOUD, TakeCheck.judge(pcm))

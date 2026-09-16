@@ -76,7 +76,8 @@ def main():
         x = np.concatenate([rng.normal(0, 30, WIN), x, rng.normal(0, 30, WIN)]); best = -1
         for a in range(0, len(x) - WIN + 1, HOP):
             seg = x[a:a+WIN]
-            if np.sqrt(np.mean(seg**2)) < 200: continue
+            en = energy_frames(seg)
+            if en.max() < max(4 * np.percentile(en, 20), 25): continue
             e, p = windows(seg); k = speech_mask(seg, p)
             if k.any(): best = max(best, float((centre(e[k]) @ C).max()))
         return best
