@@ -9,6 +9,14 @@ Package `com.verisonder.sondersound`. Android. GPL-3.0-only.
 - Voice-activity gate runs first; the matcher only runs on speech or sound energy.
 - Listening uses the **phone microphone**, not the earbuds (earbud mics force call mode and ruin music).
 - On a match: duck or pause music, play a chime in the earphones.
+
+### Setup (first launch, and "Add sound" in My sounds)
+
+1. Name the sound.
+2. Record it 5–8 times. Different distances and voice levels.
+3. Optional: hand the phone to someone else to record it too.
+4. Test: say it once more; the app shows whether it matched.
+5. Optional calibration: listen to the room for a minute and set the threshold above what it hears.
 - Language-independent. Works for any name in any language.
 - Per-sound sensitivity.
 
@@ -68,5 +76,9 @@ shortcut, save clips, auto-delete, delete all.
 
 ## 9. First step
 
-Python prototype of the detector against recordings from a real phone: the name from ~10 people at
-1–5 m, ~30 min of ordinary noise with no name, and near-misses. Measure false alerts before Android code.
+Python prototype of the detector before Android code. The test recordings are for development
+only; users never do this. They do the setup in §1.
+
+- The name recorded the way setup asks (5–8 times, one voice), to build the enrolment.
+- The name from other people at 1–5 m, to check it still matches voices that were not enrolled.
+- Ordinary noise with no name, and near-misses, to count false alerts.
