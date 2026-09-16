@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Five bars of a sound wave, inside the 66dp safe zone of a 108dp adaptive icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M33,48h6v12h-6z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M43,40h6v28h-6z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M53,32h6v44h-6z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M63,40h6v28h-6z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M73,48h6v12h-6z" />
+</vector>
