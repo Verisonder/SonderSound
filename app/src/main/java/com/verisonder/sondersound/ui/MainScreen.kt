@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -26,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Notifications
@@ -88,6 +90,11 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
     val hasKey = remember { KeyVault.hasGeminiKey(context) }
     val time = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
     var askDisclosure by remember { mutableStateOf<ShortArray?>(null) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    // Drop ids that are no longer in the list, for instance trimmed away by a new detection.
+    val liveSelection = selected.filterTo(mutableSetOf()) { id -> detections.any { it.id == id } }
+
+    BackHandler(enabled = liveSelection.isNotEmpty()) { selected = emptySet() }
 
     LaunchedEffect(Unit) { DetectionLog.load(context) }
 
@@ -269,6 +276,38 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
 
         Spacer(Modifier.height(12.dp))
 
+        if (liveSelection.isNotEmpty()) {
+            val chosen = detections.filter { it.id in liveSelection }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = { selected = emptySet() }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
+                }
+                Text("${liveSelection.size}", fontSize = 18.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = {
+                    selected = if (liveSelection.size == detections.size) emptySet() else detections.map { it.id }.toSet()
+                }) { Text(if (liveSelection.size == detections.size) "None" else "All") }
+                if (chosen.any { !it.pinned }) {
+                    TextButton(onClick = {
+                        DetectionLog.pin(context, liveSelection)
+                        selected = emptySet()
+                    }) { Text("Save") }
+                }
+                if (hasKey && chosen.size == 1) {
+                    TextButton(onClick = {
+                        transcribe(chosen.first().pcm)
+                        selected = emptySet()
+                    }) { Text("Transcribe") }
+                }
+                TextButton(onClick = {
+                    DetectionLog.delete(context, liveSelection)
+                    selected = emptySet()
+                }) { Text("Delete") }
+            }
+        }
+
         if (detections.isEmpty()) {
             Text(
                 "Nothing heard yet.",
@@ -278,14 +317,20 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
         } else {
             LazyColumn {
                 items(detections, key = { it.id }) { d ->
+                    val isSelected = d.id in liveSelection
                     DetectionRow(
                         detection = d,
                         time = time.format(Date(d.atMillis)),
-                        canTranscribe = hasKey,
+                        selected = isSelected,
+                        onClick = {
+                            if (liveSelection.isNotEmpty()) {
+                                selected = if (isSelected) liveSelection - d.id else liveSelection + d.id
+                            } else {
+                                ClipPlayer.play(context, d.pcm)
+                            }
+                        },
+                        onLongClick = { selected = liveSelection + d.id },
                         onPlay = { ClipPlayer.play(context, d.pcm) },
-                        onSave = { DetectionLog.pin(context, d.id) },
-                        onDelete = { DetectionLog.delete(context, d.id) },
-                        onTranscribe = { transcribe(d.pcm) },
                     )
                 }
             }
@@ -320,55 +365,51 @@ private fun TranscriptCard(state: Transcriber.State, onClose: () -> Unit, onCopy
     }
 }
 
+/** Tap plays, or toggles while selecting. Long-press starts selecting. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DetectionRow(
     detection: DetectionLog.Detection,
     time: String,
-    canTranscribe: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onPlay: () -> Unit,
-    onSave: () -> Unit,
-    onDelete: () -> Unit,
-    onTranscribe: () -> Unit,
 ) {
-    var menu by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(onClick = onPlay, onLongClick = { menu = true })
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = if (selected) Palette.pillOn else Palette.accent,
+            modifier = Modifier.size(56.dp),
         ) {
-            Surface(shape = CircleShape, color = Palette.accent, modifier = Modifier.size(56.dp)) {
-                Box(contentAlignment = Alignment.Center) {
+            Box(contentAlignment = Alignment.Center) {
+                if (selected) {
+                    Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Palette.onPill)
+                } else {
                     Icon(Icons.Filled.Notifications, contentDescription = null)
                 }
             }
-            Spacer(Modifier.width(20.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(detection.sound, fontSize = 20.sp, fontWeight = FontWeight.Medium)
-                Text(
-                    String.format(
-                        Locale.US, "%s · %.2f %s%s", time, detection.score,
-                        if (detection.via == "EACH") "take" else "avg",
-                        if (detection.pinned) " · saved" else "",
-                    ),
-                    color = Palette.muted,
-                )
-            }
-            IconButton(onClick = onPlay) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "Play")
-            }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            if (!detection.pinned) {
-                DropdownMenuItem(text = { Text("Save") }, onClick = { menu = false; onSave() })
-            }
-            if (canTranscribe) {
-                DropdownMenuItem(text = { Text("Transcribe") }, onClick = { menu = false; onTranscribe() })
-            }
-            DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
+        Spacer(Modifier.width(20.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(detection.sound, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+            Text(
+                String.format(
+                    Locale.US, "%s · %.2f %s%s", time, detection.score,
+                    if (detection.via == "EACH") "take" else "avg",
+                    if (detection.pinned) " · saved" else "",
+                ),
+                color = Palette.muted,
+            )
+        }
+        IconButton(onClick = onPlay) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = "Play")
         }
     }
 }

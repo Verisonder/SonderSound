@@ -31,7 +31,8 @@ object DetectionLog {
         val via: String = "AVERAGE",
     )
 
-    private const val MAX_ITEMS = 50
+    /** The latest this many are kept. Clips saved by hand are kept on top of these. */
+    const val KEEP_LATEST = 10
 
     private val _items = MutableStateFlow<List<Detection>>(emptyList())
     val items: StateFlow<List<Detection>> = _items
@@ -58,7 +59,7 @@ object DetectionLog {
                 } else item
             }
             val merged = (_items.value + fromDisk).distinctBy { it.id }.sortedByDescending { it.atMillis }
-            _items.value = merged.take(MAX_ITEMS)
+            _items.value = trim(context, merged)
             loaded = true
         }
     }
@@ -68,18 +69,30 @@ object DetectionLog {
         val save = Settings.saveClips(context)
         val item = Detection(UUID.randomUUID().toString(), sound, System.currentTimeMillis(), score, needed, pcm, save, false, via)
         if (save) write(context, item)
-        _items.value = (listOf(item) + _items.value).take(MAX_ITEMS)
+        _items.value = trim(context, listOf(item) + _items.value)
     }
 
-    fun pin(context: Context, id: String) {
+    fun pin(context: Context, ids: Set<String>) {
         _items.value = _items.value.map {
-            if (it.id == id) it.copy(saved = true, pinned = true).also { pinned -> write(context, pinned) } else it
+            if (it.id in ids && !it.pinned) it.copy(saved = true, pinned = true).also { pinned -> write(context, pinned) } else it
         }
     }
 
-    fun delete(context: Context, id: String) {
-        File(dir(context), "$id.bin").delete()
-        _items.value = _items.value.filterNot { it.id == id }
+    fun delete(context: Context, ids: Set<String>) {
+        ids.forEach { File(dir(context), "$it.bin").delete() }
+        _items.value = _items.value.filterNot { it.id in ids }
+    }
+
+    /**
+     * Newest first. Keeps the latest [KEEP_LATEST] plus every clip saved by hand, and removes
+     * the files of anything dropped, so an auto-saved clip does not outlive its place in the list.
+     */
+    private fun trim(context: Context, items: List<Detection>): List<Detection> {
+        val sorted = items.sortedByDescending { it.atMillis }
+        val keep = sorted.filterIndexed { index, d -> d.pinned || index < KEEP_LATEST }
+        val dropped = sorted.filterNot { d -> keep.any { it.id == d.id } }
+        dropped.forEach { File(dir(context), "${it.id}.bin").delete() }
+        return keep
     }
 
     fun clear(context: Context) {
