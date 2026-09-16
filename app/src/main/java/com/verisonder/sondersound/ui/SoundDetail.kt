@@ -32,6 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Switch
+import com.verisonder.sondersound.Settings
+import com.verisonder.sondersound.audio.Alert
 import com.verisonder.sondersound.audio.ClipPlayer
 import com.verisonder.sondersound.detect.Matcher
 import com.verisonder.sondersound.detect.Sounds
@@ -60,6 +63,7 @@ fun SoundDetail(soundId: String, onDeleted: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var line by remember { mutableStateOf<String?>(null) }
     var revision by remember { mutableIntStateOf(0) }
+    var actions by remember { mutableStateOf(SoundStore.actions(context, soundId)) }
 
     LaunchedEffect(revision) {
         agreement = null
@@ -94,6 +98,29 @@ fun SoundDetail(soundId: String, onDeleted: () -> Unit) {
                 line = "Renamed."
             },
         ) { Text("Save name") }
+
+        Spacer(Modifier.height(16.dp))
+        Text("When heard", fontSize = 18.sp)
+        Spacer(Modifier.height(8.dp))
+        Text("Sound", color = Palette.muted, fontSize = 14.sp)
+        Choices(listOf("Soft", "Bright", "None"), actions.chime.ordinal) {
+            actions = actions.copy(chime = Settings.Chime.entries[it])
+            SoundStore.setActions(context, soundId, actions)
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Music", color = Palette.muted, fontSize = 14.sp)
+        Choices(listOf("Lower", "Pause", "Leave"), actions.music.ordinal) {
+            actions = actions.copy(music = Settings.OnMatch.entries[it])
+            SoundStore.setActions(context, soundId, actions)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Vibrate", fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Switch(checked = actions.vibrate, onCheckedChange = {
+                actions = actions.copy(vibrate = it)
+                SoundStore.setActions(context, soundId, actions)
+            })
+        }
+        TextButton(onClick = { Alert.fire(context, actions) }) { Text("Try it") }
 
         Spacer(Modifier.height(16.dp))
         Text("Takes", fontSize = 18.sp)

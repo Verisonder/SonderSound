@@ -1,6 +1,7 @@
 package com.verisonder.sondersound.sound
 
 import android.content.Context
+import com.verisonder.sondersound.Settings
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -14,6 +15,33 @@ import java.util.UUID
 object SoundStore {
 
     data class Sound(val id: String, val name: String, val takes: Int)
+
+    /** What happens when this sound is heard. */
+    data class Actions(
+        val chime: Settings.Chime,
+        val vibrate: Boolean,
+        val music: Settings.OnMatch,
+    )
+
+    fun actions(context: Context, id: String): Actions {
+        val defaults = Actions(Settings.chime(context), false, Settings.onMatch(context))
+        val file = File(dir(context, id), "actions.txt")
+        if (!file.exists()) return defaults
+        val map = file.readLines().mapNotNull { line ->
+            line.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0].trim() to it[1].trim() }
+        }.toMap()
+        return Actions(
+            chime = runCatching { Settings.Chime.valueOf(map["chime"] ?: "") }.getOrDefault(defaults.chime),
+            vibrate = map["vibrate"]?.toBooleanStrictOrNull() ?: defaults.vibrate,
+            music = runCatching { Settings.OnMatch.valueOf(map["music"] ?: "") }.getOrDefault(defaults.music),
+        )
+    }
+
+    fun setActions(context: Context, id: String, actions: Actions) {
+        File(dir(context, id), "actions.txt").writeText(
+            "chime=${actions.chime.name}\nvibrate=${actions.vibrate}\nmusic=${actions.music.name}\n"
+        )
+    }
 
     /** One recorded take. [number] is stable: deleting another take does not renumber it. */
     data class Take(val number: Int, val pcm: ShortArray)

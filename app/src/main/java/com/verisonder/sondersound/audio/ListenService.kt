@@ -27,6 +27,7 @@ import com.verisonder.sondersound.clips.DetectionLog
 import com.verisonder.sondersound.detect.Features
 import com.verisonder.sondersound.detect.Sounds
 import com.verisonder.sondersound.detect.StreamDetector
+import com.verisonder.sondersound.sound.SoundStore
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import com.verisonder.sondersound.tile.ListenTile
@@ -241,15 +242,15 @@ class ListenService : Service() {
                     needed = r.threshold,
                     sounds = Sounds.enrolled(this).size,
                 )
-                if (r.fired && r.best != null) onHeard(r.best.name, r.best.score, r.threshold)
+                if (r.fired && r.best != null) onHeard(r.best.id, r.best.name, r.best.score, r.threshold)
             }
         }
     }
 
-    private fun onHeard(sound: String, score: Float, needed: Float) {
+    private fun onHeard(id: String, sound: String, score: Float, needed: Float) {
         // Snooze silences the alert and keeps nothing.
         if (Settings.snoozeUntil(this) > System.currentTimeMillis()) return
-        Alert.fire(this)
+        Alert.fire(this, SoundStore.actions(this, id))
         val all = ring?.snapshot() ?: ShortArray(0)
         val keep = minOf(all.size, CLIP_SECONDS * RATE)
         DetectionLog.add(this, sound, score, needed, all.copyOfRange(all.size - keep, all.size))

@@ -8,7 +8,13 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationAttributes
+import android.os.VibrationEffect
+import android.os.Build
+import android.os.Vibrator
+import android.os.VibratorManager
 import com.verisonder.sondersound.Settings
+import com.verisonder.sondersound.sound.SoundStore
 import kotlin.math.PI
 import kotlin.math.min
 import kotlin.math.sin
@@ -23,12 +29,12 @@ object Alert {
 
     private const val DUCK_HOLD_MS = 3_000L
 
-    fun fire(context: Context) {
+    fun fire(context: Context, actions: SoundStore.Actions) {
         val app = context.applicationContext
-        main.post { start(app) }
+        main.post { start(app, actions) }
     }
 
-    private fun start(context: Context) {
+    private fun start(context: Context, actions: SoundStore.Actions) {
         val audio = context.getSystemService(AudioManager::class.java)
         release(audio)
 
@@ -37,21 +43,49 @@ object Alert {
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
-        val pause = Settings.onMatch(context) == Settings.OnMatch.PAUSE
-        // Pausing takes focus for good, so music does not resume on its own; lowering
-        // takes it briefly and gives it back.
-        val request = AudioFocusRequest.Builder(
-            if (pause) AudioManager.AUDIOFOCUS_GAIN else AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
-        )
-            .setAudioAttributes(attributes)
-            .setWillPauseWhenDucked(false)
-            .build()
-        audio.requestAudioFocus(request)
-        focus = request
+        if (actions.vibrate) vibrate(context)
 
-        chime(Settings.chime(context), attributes)
+        if (actions.music != Settings.OnMatch.NOTHING) {
+            val pause = actions.music == Settings.OnMatch.PAUSE
+            // Pausing takes focus for good, so music does not resume on its own; lowering
+            // takes it briefly and gives it back.
+            val request = AudioFocusRequest.Builder(
+                if (pause) AudioManager.AUDIOFOCUS_GAIN else AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+            )
+                .setAudioAttributes(attributes)
+                .setWillPauseWhenDucked(false)
+                .build()
+            audio.requestAudioFocus(request)
+            focus = request
+            main.postDelayed({ release(audio) }, if (pause) 800L else DUCK_HOLD_MS)
+        }
 
-        main.postDelayed({ release(audio) }, if (pause) 800L else DUCK_HOLD_MS)
+        chime(actions.chime, attributes)
+    }
+
+    /**
+     * Two short buzzes, declared as an alarm vibration. Android may not deliver a background
+     * app's vibration without a usage, and alarm also reaches a phone on Do Not Disturb.
+     */
+    private fun vibrate(context: Context) {
+        val effect = VibrationEffect.createWaveform(longArrayOf(0, 180, 120, 180), -1)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 33) {
+                // VibratorManager is 31, VibrationAttributes is 33.
+                context.getSystemService(VibratorManager::class.java).defaultVibrator.vibrate(
+                    effect,
+                    VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(
+                    effect,
+                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build(),
+                )
+            }
+        }
     }
 
     private fun release(audio: AudioManager) {

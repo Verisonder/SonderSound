@@ -28,7 +28,8 @@ object Settings {
     /** 0 means keep forever. */
     val KEEP_CHOICES = listOf(1, 24, 24 * 7, 0)
 
-    enum class OnMatch { LOWER, PAUSE }
+    /** What a detection does to music playing on the phone. */
+    enum class OnMatch { LOWER, PAUSE, NOTHING }
     enum class Script { ARABIC, LATIN }
     enum class Chime { SOFT, BRIGHT, OFF }
 
@@ -57,6 +58,7 @@ object Settings {
     fun setSensitivity(context: Context, value: Float) =
         of(context).edit().putFloat(SENSITIVITY, value.coerceIn(0f, 1f)).apply()
 
+    /** Only the starting value for a new sound. Each sound keeps its own actions. */
     fun onMatch(context: Context): OnMatch =
         runCatching { OnMatch.valueOf(of(context).getString(ON_MATCH, null) ?: "") }
             .getOrDefault(OnMatch.LOWER)

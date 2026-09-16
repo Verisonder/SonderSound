@@ -58,14 +58,12 @@ fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     var sensitivity by remember { mutableFloatStateOf(Settings.sensitivity(context)) }
-    var onMatch by remember { mutableStateOf(Settings.onMatch(context)) }
     var seconds by remember { mutableIntStateOf(Settings.bufferSeconds(context)) }
     var saveClips by remember { mutableStateOf(Settings.saveClips(context)) }
     var keepHours by remember { mutableIntStateOf(Settings.keepHours(context)) }
     var hasKey by remember { mutableStateOf(KeyVault.hasGeminiKey(context)) }
     var keyDraft by remember { mutableStateOf("") }
     var script by remember { mutableStateOf(Settings.darijaScript(context)) }
-    var chime by remember { mutableStateOf(Settings.chime(context)) }
     var keyLine by remember { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(false) }
     var cleared by remember { mutableStateOf(false) }
@@ -90,19 +88,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             onValueChange = { sensitivity = it },
             onValueChangeFinished = { Settings.setSensitivity(context, sensitivity) },
         )
-        Option("When it hears it", null)
-        Choices(
-            labels = listOf("Lower music", "Pause music"),
-            selected = onMatch.ordinal,
-        ) {
-            onMatch = Settings.OnMatch.entries[it]
-            Settings.setOnMatch(context, onMatch)
-        }
-        Option("Chime", null)
-        Choices(labels = listOf("Soft", "Bright", "Off"), selected = chime.ordinal) {
-            chime = Settings.Chime.entries[it]
-            Settings.setChime(context, chime)
-        }
+        Option("What it does", "Set for each sound, in My sounds.")
 
         Section("Last clip")
         Option("Length", "Only this much is kept in memory.")
@@ -255,7 +241,7 @@ private fun SwitchOption(title: String, line: String, checked: Boolean, onChange
 }
 
 @Composable
-private fun Choices(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+fun Choices(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         labels.forEachIndexed { index, label ->
             SegmentedButton(
