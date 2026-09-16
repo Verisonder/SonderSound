@@ -161,7 +161,7 @@ fun RecordSound(onDone: () -> Unit, secondary: String, onSecondary: () -> Unit) 
                                     else -> String.format(Locale.US, "No match. %.2f, needs %.2f.", best.score, needed)
                                 }
                             },
-                            onFailure = { "Detector failed to load." },
+                            onFailure = { Sounds.describe(it) },
                         )
                     }
                 },

@@ -8,6 +8,13 @@ import com.verisonder.sondersound.sound.SoundStore
  * on the audio thread's hot path more than once per change.
  */
 object Sounds {
+    /** One short line for the screen: what went wrong, not just that it did. */
+    fun describe(error: Throwable): String {
+        val root = generateSequence(error) { it.cause }.last()
+        val message = root.message?.lineSequence()?.firstOrNull()?.take(90).orEmpty()
+        return "Detector failed: ${root.javaClass.simpleName}${if (message.isNotEmpty()) " — $message" else ""}"
+    }
+
     @Volatile private var cachedVersion = -1L
     @Volatile private var cached: List<Matcher.Enrolled> = emptyList()
     @Volatile private var matcher: Matcher? = null

@@ -221,13 +221,13 @@ class ListenService : Service() {
                 threshold = { Features.threshold(Settings.sensitivity(this)) },
             )
         }.getOrElse {
-            note("Detector failed to load.")
+            note(Sounds.describe(it))
             return
         }
         while (recording) {
             val chunk = chunks.poll(200, TimeUnit.MILLISECONDS) ?: continue
             val readings = runCatching { detector.feed(chunk) }.getOrElse {
-                note("Detector error.")
+                note(Sounds.describe(it))
                 emptyList()
             }
             for (r in readings) {

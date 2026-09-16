@@ -17,7 +17,9 @@ class TfEmbedder private constructor(context: Context) : Embedder {
     private val melBands: Int
 
     init {
-        mel.resizeInput(0, intArrayOf(1, Features.WINDOW))
+        // The shipped mel model has its input fixed at 1.2 s (see docs/MODELS.md). The
+        // original declared a 1-sample input, which the Interpreter constructor tries to
+        // allocate and fails on before a resize can happen.
         mel.allocateTensors()
         val shape = mel.getOutputTensor(0).shape() // [1, 1, frames, bands]
         melFrames = shape[2]
