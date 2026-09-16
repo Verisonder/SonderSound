@@ -43,21 +43,29 @@ object KeyVault {
         return generator.generateKey()
     }
 
-    fun saveGeminiKey(context: Context, value: String) {
+    /** IV followed by ciphertext. Used for the key and for saved clips. */
+    fun seal(plain: ByteArray): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORM)
         cipher.init(Cipher.ENCRYPT_MODE, secret())
-        val sealed = cipher.iv + cipher.doFinal(value.trim().toByteArray(Charsets.UTF_8))
+        return cipher.iv + cipher.doFinal(plain)
+    }
+
+    /** Null if it cannot be decrypted, for instance after the Keystore key was lost. */
+    fun open(sealed: ByteArray): ByteArray? = runCatching {
+        val cipher = Cipher.getInstance(TRANSFORM)
+        cipher.init(Cipher.DECRYPT_MODE, secret(), GCMParameterSpec(128, sealed, 0, IV_BYTES))
+        cipher.doFinal(sealed, IV_BYTES, sealed.size - IV_BYTES)
+    }.getOrNull()
+
+    fun saveGeminiKey(context: Context, value: String) {
+        val sealed = seal(value.trim().toByteArray(Charsets.UTF_8))
         prefs(context).edit().putString(GEMINI, Base64.encodeToString(sealed, Base64.NO_WRAP)).apply()
     }
 
     fun geminiKey(context: Context): String? {
         val stored = prefs(context).getString(GEMINI, null) ?: return null
-        return runCatching {
-            val bytes = Base64.decode(stored, Base64.NO_WRAP)
-            val cipher = Cipher.getInstance(TRANSFORM)
-            cipher.init(Cipher.DECRYPT_MODE, secret(), GCMParameterSpec(128, bytes, 0, IV_BYTES))
-            String(cipher.doFinal(bytes, IV_BYTES, bytes.size - IV_BYTES), Charsets.UTF_8)
-        }.getOrNull()
+        val bytes = runCatching { Base64.decode(stored, Base64.NO_WRAP) }.getOrNull() ?: return null
+        return open(bytes)?.toString(Charsets.UTF_8)
     }
 
     fun hasGeminiKey(context: Context): Boolean = geminiKey(context) != null

@@ -84,6 +84,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.tensorflow.lite)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

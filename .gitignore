@@ -9,3 +9,7 @@
 .cxx
 local.properties
 /app/build
+
+__pycache__/
+tools/replay/*.tflite
+tools/replay/*.f32

@@ -7,6 +7,7 @@ activityCompose = "1.9.3"
 composeBom = "2024.12.01"
 junit = "4.13.2"
 coroutines = "1.8.1"
+tflite = "2.16.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -24,6 +25,9 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 androidx-compose-material-icons = { group = "androidx.compose.material", name = "material-icons-core" }
 
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Runs the speech embedding models in assets/. See docs/MODELS.md.
+tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tflite" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 

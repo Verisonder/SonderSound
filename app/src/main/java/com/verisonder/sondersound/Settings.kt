@@ -19,6 +19,8 @@ object Settings {
     private const val SAVE_CLIPS = "save_clips"
     private const val KEEP_HOURS = "keep_hours"
     private const val DARIJA_SCRIPT = "darija_script"
+    private const val CHIME = "chime"
+    private const val TRANSCRIBE_OK = "transcribe_disclosed"
 
     const val DEFAULT_SENSITIVITY = 0.5f
     val BUFFER_CHOICES = listOf(15, 30)
@@ -28,6 +30,7 @@ object Settings {
 
     enum class OnMatch { LOWER, PAUSE }
     enum class Script { ARABIC, LATIN }
+    enum class Chime { SOFT, BRIGHT, OFF }
 
     private fun of(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -74,4 +77,15 @@ object Settings {
             .getOrDefault(Script.ARABIC)
     fun setDarijaScript(context: Context, value: Script) =
         of(context).edit().putString(DARIJA_SCRIPT, value.name).apply()
+
+    fun chime(context: Context): Chime =
+        runCatching { Chime.valueOf(of(context).getString(CHIME, null) ?: "") }
+            .getOrDefault(Chime.SOFT)
+    fun setChime(context: Context, value: Chime) =
+        of(context).edit().putString(CHIME, value.name).apply()
+
+    /** The one-time notice that transcribed clips go to Google has been accepted. */
+    fun transcribeDisclosed(context: Context): Boolean = of(context).getBoolean(TRANSCRIBE_OK, false)
+    fun setTranscribeDisclosed(context: Context) =
+        of(context).edit().putBoolean(TRANSCRIBE_OK, true).apply()
 }

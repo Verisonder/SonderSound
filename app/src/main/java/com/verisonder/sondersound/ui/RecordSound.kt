@@ -33,6 +33,12 @@ import com.verisonder.sondersound.audio.ClipPlayer
 import com.verisonder.sondersound.sound.SoundStore
 import com.verisonder.sondersound.sound.TakeCheck
 import com.verisonder.sondersound.sound.TakeRecorder
+import com.verisonder.sondersound.Settings
+import com.verisonder.sondersound.detect.Features
+import com.verisonder.sondersound.detect.Sounds
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 /**
@@ -119,6 +125,47 @@ fun RecordSound(onDone: () -> Unit, secondary: String, onSecondary: () -> Unit) 
 
         line?.let {
             Text(it, color = Palette.muted, modifier = Modifier.padding(top = 12.dp))
+        }
+
+        if (takes >= SoundStore.MIN_TAKES) {
+            Spacer(Modifier.height(24.dp))
+            Text("Test it", fontSize = 18.sp)
+            Text("Say it once more, or say something else.", color = Palette.muted, fontSize = 14.sp)
+            TextButton(
+                enabled = !recording,
+                onClick = {
+                    val soundId = id ?: return@TextButton
+                    recording = true
+                    line = "Say it now."
+                    scope.launch {
+                        val pcm = runCatching { TakeRecorder.record() }.getOrNull()
+                        if (pcm == null) {
+                            recording = false
+                            line = "Microphone unavailable."
+                            return@launch
+                        }
+                        line = "Checking…"
+                        val result = withContext(Dispatchers.Default) {
+                            runCatching {
+                                val enrolled = Sounds.enrolled(context).filter { it.id == soundId }
+                                Sounds.matcher(context).scoreRecording(pcm, enrolled)
+                            }
+                        }
+                        recording = false
+                        val needed = Features.threshold(Settings.sensitivity(context))
+                        line = result.fold(
+                            onSuccess = { best ->
+                                when {
+                                    best == null -> "Heard nothing to compare."
+                                    best.score >= needed -> String.format(Locale.US, "Match. %.2f, needs %.2f.", best.score, needed)
+                                    else -> String.format(Locale.US, "No match. %.2f, needs %.2f.", best.score, needed)
+                                }
+                            },
+                            onFailure = { "Detector failed to load." },
+                        )
+                    }
+                },
+            ) { Text("Test") }
         }
 
         Spacer(Modifier.height(32.dp))

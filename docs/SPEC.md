@@ -5,7 +5,8 @@ Package `com.verisonder.sondersound`. Android. GPL-3.0-only.
 ## 1. Detection
 
 - The user enrols a custom sound by recording samples: a name, a doorbell, anything. No per-user
-  model training; enrolment stores audio embeddings and the live sound is compared against them.
+  model training; enrolment averages speech embeddings and the live sound is compared against
+  them. Details in DETECTION.md, models and their licence in MODELS.md.
 - Voice-activity gate runs first; the matcher only runs on speech or sound energy.
 - Listening uses the **phone microphone**, not the earbuds (earbud mics force call mode and ruin music).
 - On a match: duck or pause music, play a chime in the earphones.
@@ -27,7 +28,8 @@ Package `com.verisonder.sondersound`. Android. GPL-3.0-only.
 - 30 → 15 drops the older half at once. 15 → 30 fills from the moment of the switch; the screen shows
   how many seconds are actually held.
 - On trigger the clip is frozen; the rolling buffer keeps recording separately.
-- Triggers: main screen, quick-settings tile, notification action, earbud long-press (to be tested).
+- Triggers: main screen, quick-settings tile, notification action. Earbud long-press is not offered:
+  media buttons go to whichever app last played music, so it cannot work reliably.
 
 ## 3. Play back
 
@@ -38,7 +40,8 @@ Package `com.verisonder.sondersound`. Android. GPL-3.0-only.
 - Only shown once the user has saved a Gemini API key. No backend: the app calls Gemini directly.
 - Key checked with one call when pasted. Stored with Android Keystore encryption, excluded from backups.
 - "Get a key" link to Google AI Studio.
-- Clip compressed to Opus, sent inline, runs in the background.
+- Clip sent inline as WAV (30 s is under 1 MB, far below the 20 MB limit), in the background.
+  Model `gemini-3.8-flash` through the Interactions endpoint, with generateContent as fallback.
 - Prompt: verbatim, no translation or summary; keep code-switching as spoken; `[unclear]` for
   unclear parts. Setting for Darija script: Arabic script or Latin (Arabizi).
 - Offline: keep in memory, retry on reconnect, discard after a limit. Never to disk.

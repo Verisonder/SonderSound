@@ -2,4 +2,7 @@
     <string name="app_name">SonderSound</string>
     <string name="listening_channel">Listening</string>
     <string name="listening_notification">Listening</string>
+    <string name="heard_channel">Heard</string>
+    <string name="heard_notification">Heard %1$s</string>
+    <string name="tile_label">Last clip</string>
 </resources>

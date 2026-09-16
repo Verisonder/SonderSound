@@ -23,6 +23,12 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.verisonder.sondersound.R
 import com.verisonder.sondersound.Settings
+import com.verisonder.sondersound.clips.DetectionLog
+import com.verisonder.sondersound.detect.Features
+import com.verisonder.sondersound.detect.Sounds
+import com.verisonder.sondersound.detect.StreamDetector
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.TimeUnit
 import com.verisonder.sondersound.ui.MainActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,11 +47,19 @@ class ListenService : Service() {
         val running: Boolean = false,
         val heldSeconds: Int = 0,
         val note: String? = null,
+        /** Best match in the last evaluation with sound in it, or null in silence. */
+        val score: Float? = null,
+        val needed: Float = 0f,
+        val sounds: Int = 0,
     )
 
     companion object {
         const val RATE = 16_000
         private const val CHANNEL = "listening"
+        private const val HEARD_CHANNEL = "heard"
+        private const val HEARD_ID = 2
+        /** How much audio before the moment of a match is kept with the detection. */
+        private const val CLIP_SECONDS = 4
         private const val NOTIFICATION_ID = 1
         private const val ACTION_PLAY = "com.verisonder.sondersound.PLAY"
         private const val ACTION_STOP = "com.verisonder.sondersound.STOP"
@@ -83,7 +97,10 @@ class ListenService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private var record: AudioRecord? = null
     private var reader: Thread? = null
+    private var worker: Thread? = null
     @Volatile private var recording = false
+    /** Chunks from the mic thread to the detector thread. Dropped, not queued, if it falls behind. */
+    private val chunks = ArrayBlockingQueue<ShortArray>(50)
 
     private val silencing = object : AudioManager.AudioRecordingCallback() {
         override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) {
@@ -168,7 +185,7 @@ class ListenService : Service() {
         ring = buffer
         recording = true
         getSystemService(AudioManager::class.java).registerAudioRecordingCallback(silencing, main)
-        _state.value = State(running = true)
+        _state.value = State(running = true, needed = Features.threshold(Settings.sensitivity(this)))
 
         reader = Thread({
             val chunk = ShortArray(RATE / 10)
@@ -179,7 +196,10 @@ class ListenService : Service() {
                     note("Microphone stopped (error $n).")
                     break
                 }
-                if (n > 0) buffer.write(chunk, n)
+                if (n > 0) {
+                    buffer.write(chunk, n)
+                    chunks.offer(chunk.copyOf(n))
+                }
                 val now = System.currentTimeMillis()
                 if (now - lastPublish >= 1000) {
                     lastPublish = now
@@ -187,13 +207,78 @@ class ListenService : Service() {
                 }
             }
         }, "sondersound-mic").apply { start() }
+
+        worker = Thread({ detectLoop() }, "sondersound-detect").apply { start() }
         return true
+    }
+
+    private fun detectLoop() {
+        val detector = runCatching {
+            val matcher = Sounds.matcher(this)
+            StreamDetector(
+                matcher = matcher,
+                sounds = { Sounds.enrolled(this) },
+                threshold = { Features.threshold(Settings.sensitivity(this)) },
+            )
+        }.getOrElse {
+            note("Detector failed to load.")
+            return
+        }
+        while (recording) {
+            val chunk = chunks.poll(200, TimeUnit.MILLISECONDS) ?: continue
+            val readings = runCatching { detector.feed(chunk) }.getOrElse {
+                note("Detector error.")
+                emptyList()
+            }
+            for (r in readings) {
+                _state.value = _state.value.copy(
+                    score = r.best?.score,
+                    needed = r.threshold,
+                    sounds = Sounds.enrolled(this).size,
+                )
+                if (r.fired && r.best != null) onHeard(r.best.name, r.best.score, r.threshold)
+            }
+        }
+    }
+
+    private fun onHeard(sound: String, score: Float, needed: Float) {
+        // Snooze silences the alert and keeps nothing.
+        if (Settings.snoozeUntil(this) > System.currentTimeMillis()) return
+        Alert.fire(this)
+        val all = ring?.snapshot() ?: ShortArray(0)
+        val keep = minOf(all.size, CLIP_SECONDS * RATE)
+        DetectionLog.add(this, sound, score, needed, all.copyOfRange(all.size - keep, all.size))
+        postHeard(sound)
+    }
+
+    private fun postHeard(sound: String) {
+        val manager = getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(HEARD_CHANNEL) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(HEARD_CHANNEL, getString(R.string.heard_channel), NotificationManager.IMPORTANCE_DEFAULT)
+                    .apply { setSound(null, null) } // The chime is the sound.
+            )
+        }
+        val open = PendingIntent.getActivity(
+            this, 3, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(this, HEARD_CHANNEL)
+            .setSmallIcon(R.drawable.ic_bars)
+            .setContentTitle(getString(R.string.heard_notification, sound))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        runCatching { manager.notify(HEARD_ID, notification) }
     }
 
     override fun onDestroy() {
         recording = false
         reader?.join(500)
         reader = null
+        worker?.join(500)
+        worker = null
+        chunks.clear()
         runCatching { getSystemService(AudioManager::class.java).unregisterAudioRecordingCallback(silencing) }
         record?.let {
             runCatching { it.stop() }

@@ -1,10 +1,14 @@
 package com.verisonder.sondersound.ui
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +31,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings as SettingsIcon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +43,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -58,11 +66,11 @@ import com.verisonder.sondersound.R
 import com.verisonder.sondersound.Settings
 import com.verisonder.sondersound.audio.ClipPlayer
 import com.verisonder.sondersound.audio.ListenService
+import com.verisonder.sondersound.clips.DetectionLog
+import com.verisonder.sondersound.transcribe.Transcriber
 import java.text.DateFormat
 import java.util.Date
-
-/** One thing the app heard. Filled in once detection exists. */
-data class Detection(val sound: String, val atMillis: Long)
+import java.util.Locale
 
 private const val SNOOZE_MS = 60 * 60 * 1000L
 
@@ -71,13 +79,17 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
     val context = LocalContext.current
     val service by ListenService.state.collectAsState()
     val playing by ClipPlayer.playing.collectAsState()
+    val detections by DetectionLog.items.collectAsState()
+    val transcript by Transcriber.state.collectAsState()
     var refused by remember { mutableStateOf(false) }
     var snoozeUntil by remember { mutableLongStateOf(Settings.snoozeUntil(context)) }
     val snoozed = snoozeUntil > System.currentTimeMillis()
     val seconds = remember { Settings.bufferSeconds(context) }
     val hasKey = remember { KeyVault.hasGeminiKey(context) }
-    val detections = remember { emptyList<Detection>() }
     val time = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
+    var askDisclosure by remember { mutableStateOf<ShortArray?>(null) }
+
+    LaunchedEffect(Unit) { DetectionLog.load(context) }
 
     // The pill shows what the service is doing, not the saved switch.
     val listening = service.running
@@ -108,6 +120,26 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
         }
     }
 
+    fun transcribe(pcm: ShortArray) {
+        if (Settings.transcribeDisclosed(context)) Transcriber.start(context, pcm) else askDisclosure = pcm
+    }
+
+    askDisclosure?.let { pcm ->
+        AlertDialog(
+            onDismissRequest = { askDisclosure = null },
+            title = { Text("Transcribe") },
+            text = { Text("Clips you transcribe are sent to Google using your key.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    Settings.setTranscribeDisclosed(context)
+                    askDisclosure = null
+                    Transcriber.start(context, pcm)
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { askDisclosure = null }) { Text("Cancel") } },
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -129,20 +161,21 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(72.dp))
+        Spacer(Modifier.height(40.dp))
+        Text("SonderSound", fontSize = 44.sp, modifier = Modifier.padding(horizontal = 8.dp))
         Text(
-            "SonderSound",
-            fontSize = 44.sp,
-            modifier = Modifier.padding(horizontal = 8.dp),
-        )
-        Text(
-            if (snoozed) "Snoozed until ${time.format(Date(snoozeUntil))}" else " ",
+            when {
+                snoozed -> "Snoozed until ${time.format(Date(snoozeUntil))}"
+                listening && service.sounds == 0 -> "No sounds yet. Add one in My sounds."
+                listening && service.score != null ->
+                    String.format(Locale.US, "Hearing %.2f · needs %.2f", service.score, service.needed)
+                else -> " "
+            },
             color = Palette.muted,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
 
-        // The big toggle.
         Surface(
             shape = RoundedCornerShape(50),
             color = if (listening) Palette.pillOn else Palette.pillOff,
@@ -174,7 +207,6 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
 
         Spacer(Modifier.height(12.dp))
 
-        // The buffer. Transcribe is wired in a later step.
         Surface(shape = RoundedCornerShape(50), color = Palette.card, modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
@@ -183,11 +215,8 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
                 IconButton(
                     enabled = playing || service.heldSeconds > 0,
                     onClick = {
-                        if (playing) {
-                            ClipPlayer.stop()
-                        } else {
-                            ListenService.freeze()?.let { ClipPlayer.play(context, it) }
-                        }
+                        if (playing) ClipPlayer.stop()
+                        else ListenService.freeze()?.let { ClipPlayer.play(context, it) }
                     },
                 ) {
                     Icon(
@@ -202,18 +231,23 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
                     }
                 }
                 if (hasKey) {
-                    TextButton(onClick = {}, enabled = false) { Text("Transcribe") }
+                    TextButton(
+                        enabled = service.heldSeconds > 0 && transcript != Transcriber.State.Working,
+                        onClick = { ListenService.freeze()?.let { transcribe(it) } },
+                    ) { Text("Transcribe") }
                 }
             }
         }
 
-        val problem = when {
-            refused -> "Microphone permission is needed."
-            else -> service.note
-        }
+        val problem = if (refused) "Microphone permission is needed." else service.note
         if (problem != null) {
             Text(problem, color = Palette.muted, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         }
+
+        TranscriptCard(transcript, onClose = { Transcriber.dismiss(context) }, onCopy = { text ->
+            context.getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("Transcript", text))
+        })
 
         Spacer(Modifier.height(12.dp))
 
@@ -233,7 +267,7 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
 
         if (detections.isEmpty()) {
             Text(
@@ -243,35 +277,94 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
             )
         } else {
             LazyColumn {
-                items(detections) { d -> DetectionRow(d, time.format(Date(d.atMillis))) }
+                items(detections, key = { it.id }) { d ->
+                    DetectionRow(
+                        detection = d,
+                        time = time.format(Date(d.atMillis)),
+                        canTranscribe = hasKey,
+                        onPlay = { ClipPlayer.play(context, d.pcm) },
+                        onSave = { DetectionLog.pin(context, d.id) },
+                        onDelete = { DetectionLog.delete(context, d.id) },
+                        onTranscribe = { transcribe(d.pcm) },
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun DetectionRow(detection: Detection, time: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun TranscriptCard(state: Transcriber.State, onClose: () -> Unit, onCopy: (String) -> Unit) {
+    val body = when (state) {
+        Transcriber.State.Idle -> return
+        Transcriber.State.Working -> "Transcribing…"
+        Transcriber.State.Waiting -> "Offline. Will retry."
+        is Transcriber.State.Done -> state.text
+        is Transcriber.State.Error -> state.line
+    }
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Palette.card,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
     ) {
-        Box(
-            modifier = Modifier.size(56.dp),
-            contentAlignment = Alignment.Center,
+        Column(modifier = Modifier.padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Transcript", color = Palette.muted, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                if (state is Transcriber.State.Done) {
+                    TextButton(onClick = { onCopy(state.text) }) { Text("Copy") }
+                }
+                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close") }
+            }
+            Text(body, fontSize = 17.sp, modifier = Modifier.padding(end = 12.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DetectionRow(
+    detection: DetectionLog.Detection,
+    time: String,
+    canTranscribe: Boolean,
+    onPlay: () -> Unit,
+    onSave: () -> Unit,
+    onDelete: () -> Unit,
+    onTranscribe: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onPlay, onLongClick = { menu = true })
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(shape = CircleShape, color = Palette.accent, modifier = Modifier.size(56.dp)) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Notifications, contentDescription = null)
                 }
             }
+            Spacer(Modifier.width(20.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(detection.sound, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    String.format(Locale.US, "%s · %.2f%s", time, detection.score, if (detection.pinned) " · saved" else ""),
+                    color = Palette.muted,
+                )
+            }
+            IconButton(onClick = onPlay) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = "Play")
+            }
         }
-        Spacer(Modifier.width(20.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(detection.sound, fontSize = 20.sp, fontWeight = FontWeight.Medium)
-            Text(time, color = Palette.muted)
-        }
-        IconButton(onClick = {}, enabled = false) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = "Play")
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            if (!detection.pinned) {
+                DropdownMenuItem(text = { Text("Save") }, onClick = { menu = false; onSave() })
+            }
+            if (canTranscribe) {
+                DropdownMenuItem(text = { Text("Transcribe") }, onClick = { menu = false; onTranscribe() })
+            }
+            DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
         }
     }
 }
@@ -289,19 +382,8 @@ private fun SnoozeIcon(snoozed: Boolean) {
             .drawWithContent {
                 drawContent()
                 if (snoozed) {
-                    drawLine(
-                        color = Color.Black,
-                        start = Offset(0f, 0f),
-                        end = Offset(size.width, size.height),
-                        strokeWidth = 6f,
-                    )
-                    drawLine(
-                        color = tint,
-                        start = Offset(0f, 0f),
-                        end = Offset(size.width, size.height),
-                        strokeWidth = 3f,
-                        cap = StrokeCap.Round,
-                    )
+                    drawLine(Color.Black, Offset(0f, 0f), Offset(size.width, size.height), strokeWidth = 6f)
+                    drawLine(tint, Offset(0f, 0f), Offset(size.width, size.height), strokeWidth = 3f, cap = StrokeCap.Round)
                 }
             },
     )

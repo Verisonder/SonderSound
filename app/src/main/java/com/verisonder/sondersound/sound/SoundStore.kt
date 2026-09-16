@@ -18,6 +18,18 @@ object SoundStore {
     const val MIN_TAKES = 5
     const val MAX_TAKES = 8
 
+    /**
+     * Changes whenever a sound or take is added or removed, so the detector knows to
+     * rebuild. Stored so a restarted service sees changes made while it was down.
+     */
+    fun version(context: Context): Long =
+        context.getSharedPreferences("sounds", Context.MODE_PRIVATE).getLong("version", 0L)
+
+    private fun bump(context: Context) {
+        val prefs = context.getSharedPreferences("sounds", Context.MODE_PRIVATE)
+        prefs.edit().putLong("version", prefs.getLong("version", 0L) + 1).apply()
+    }
+
     private fun root(context: Context) = File(context.filesDir, "sounds").apply { mkdirs() }
     private fun dir(context: Context, id: String) = File(root(context), id)
 
@@ -44,6 +56,7 @@ object SoundStore {
         val bytes = ByteBuffer.allocate(pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
         bytes.asShortBuffer().put(pcm)
         File(folder, "take_$next.pcm").writeBytes(bytes.array())
+        bump(context)
     }
 
     fun takes(context: Context, id: String): List<ShortArray> =
@@ -54,10 +67,12 @@ object SoundStore {
 
     fun removeLastTake(context: Context, id: String) {
         takeFiles(dir(context, id)).lastOrNull()?.delete()
+        bump(context)
     }
 
     fun delete(context: Context, id: String) {
         dir(context, id).deleteRecursively()
+        bump(context)
     }
 
     private fun takeFiles(folder: File): List<File> =

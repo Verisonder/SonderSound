@@ -44,6 +44,12 @@ import androidx.compose.ui.unit.sp
 import com.verisonder.sondersound.KeyVault
 import com.verisonder.sondersound.Settings
 import com.verisonder.sondersound.audio.ListenService
+import com.verisonder.sondersound.clips.DetectionLog
+import com.verisonder.sondersound.detect.Features
+import com.verisonder.sondersound.transcribe.Gemini
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import java.util.Locale
 
 private const val GET_KEY_URL = "https://aistudio.google.com/apikey"
 
@@ -59,6 +65,11 @@ fun SettingsScreen(onBack: () -> Unit) {
     var hasKey by remember { mutableStateOf(KeyVault.hasGeminiKey(context)) }
     var keyDraft by remember { mutableStateOf("") }
     var script by remember { mutableStateOf(Settings.darijaScript(context)) }
+    var chime by remember { mutableStateOf(Settings.chime(context)) }
+    var keyLine by remember { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    var cleared by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -70,7 +81,10 @@ fun SettingsScreen(onBack: () -> Unit) {
         TopBar("Settings", onBack)
 
         Section("Listening")
-        Option("Sensitivity", "Higher catches more, and more by mistake.")
+        Option(
+            "Sensitivity",
+            String.format(Locale.US, "Needs a match of %.2f. Higher catches more, and more by mistake.", Features.threshold(sensitivity)),
+        )
         Slider(
             value = sensitivity,
             onValueChange = { sensitivity = it },
@@ -83,6 +97,11 @@ fun SettingsScreen(onBack: () -> Unit) {
         ) {
             onMatch = Settings.OnMatch.entries[it]
             Settings.setOnMatch(context, onMatch)
+        }
+        Option("Chime", null)
+        Choices(labels = listOf("Soft", "Bright", "Off"), selected = chime.ordinal) {
+            chime = Settings.Chime.entries[it]
+            Settings.setChime(context, chime)
         }
 
         Section("Last clip")
@@ -118,6 +137,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Settings.setKeepHours(context, keepHours)
             }
         }
+        OutlinedButton(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            onClick = {
+                DetectionLog.clear(context)
+                cleared = true
+            },
+        ) { Text(if (cleared) "All clips deleted" else "Delete all clips") }
 
         Section("Transcription")
         if (hasKey) {
@@ -125,7 +151,9 @@ fun SettingsScreen(onBack: () -> Unit) {
             OutlinedButton(onClick = {
                 KeyVault.clearGeminiKey(context)
                 hasKey = false
+                keyLine = null
             }) { Text("Remove key") }
+            keyLine?.let { Text(it, color = Palette.muted, modifier = Modifier.padding(8.dp)) }
 
             Spacer(Modifier.height(8.dp))
             Option("Darija script", null)
@@ -144,13 +172,32 @@ fun SettingsScreen(onBack: () -> Unit) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
+            keyLine?.let { Text(it, color = Palette.muted, modifier = Modifier.padding(8.dp)) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(
-                    enabled = keyDraft.isNotBlank(),
+                    enabled = keyDraft.isNotBlank() && !checking,
                     onClick = {
-                        KeyVault.saveGeminiKey(context, keyDraft)
-                        keyDraft = ""
-                        hasKey = KeyVault.hasGeminiKey(context)
+                        val draft = keyDraft.trim()
+                        checking = true
+                        keyLine = "Checking…"
+                        scope.launch {
+                            when (Gemini.checkKey(draft)) {
+                                Gemini.KeyCheck.WORKS -> {
+                                    KeyVault.saveGeminiKey(context, draft)
+                                    keyLine = "Key works."
+                                }
+                                Gemini.KeyCheck.REJECTED -> keyLine = "Key rejected. Not saved."
+                                Gemini.KeyCheck.UNKNOWN -> {
+                                    KeyVault.saveGeminiKey(context, draft)
+                                    keyLine = "Could not check it. Saved anyway."
+                                }
+                            }
+                            checking = false
+                            if (KeyVault.hasGeminiKey(context)) {
+                                keyDraft = ""
+                                hasKey = true
+                            }
+                        }
                     },
                 ) { Text("Save") }
                 TextButton(onClick = {
