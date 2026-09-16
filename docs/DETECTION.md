@@ -59,3 +59,21 @@ will fire.
 
 These are synthetic voices. The real numbers come from the Test step in setup and the score
 shown on the main screen while listening.
+
+## Matching modes
+
+Settings → Matching. **Average** compares with one blend of all takes. **Each take** compares
+with every take and keeps the closest. **Both** uses whichever is higher. Each detection shows
+which one matched ("avg" or "take").
+
+Replay, same calls and words, lowest score among calls that should match against highest
+among words that should not ("alley" left out, it is effectively the same word):
+
+| Takes | Average | Each take |
+|---|---|---|
+| 5 similar takes | 0.61 vs 0.58, gap +0.03 | 0.65 vs 0.63, gap +0.03 |
+| 8 varied takes (whisper, far, other voices) | 0.70 vs 0.51, gap **+0.18** | 0.72 vs 0.63, gap +0.09 |
+
+Each take raises every score, other words included, so it catches more and mistakes more.
+Average with varied takes separated best. Both behaves like Each take, since the closest take
+is almost always at least as close as the blend. Average is the default.

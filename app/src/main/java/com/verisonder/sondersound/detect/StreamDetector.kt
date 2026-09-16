@@ -9,6 +9,7 @@ class StreamDetector(
     private val matcher: Matcher,
     private val sounds: () -> List<Matcher.Enrolled>,
     private val threshold: () -> Float,
+    private val mode: () -> Matcher.Mode = { Matcher.Mode.AVERAGE },
     private val cooldownMs: Long = 3_000,
 ) {
     data class Reading(val best: Matcher.Best?, val threshold: Float, val fired: Boolean)
@@ -48,7 +49,7 @@ class StreamDetector(
 
     private fun evaluate(): Reading {
         val limit = threshold()
-        val best = matcher.score(linear(), sounds())
+        val best = matcher.score(linear(), sounds(), mode())
         val nowMs = samplesSeen * 1000 / Features.RATE
         val fire = best != null && best.score >= limit && nowMs - lastFireAt >= cooldownMs
         if (fire) lastFireAt = nowMs

@@ -138,31 +138,8 @@ fun RecordSound(onDone: () -> Unit, secondary: String, onSecondary: () -> Unit) 
                     recording = true
                     line = "Say it now."
                     scope.launch {
-                        val pcm = runCatching { TakeRecorder.record() }.getOrNull()
-                        if (pcm == null) {
-                            recording = false
-                            line = "Microphone unavailable."
-                            return@launch
-                        }
-                        line = "Checking…"
-                        val result = withContext(Dispatchers.Default) {
-                            runCatching {
-                                val enrolled = Sounds.enrolled(context).filter { it.id == soundId }
-                                Sounds.matcher(context).scoreRecording(pcm, enrolled)
-                            }
-                        }
+                        line = testSound(context, soundId)
                         recording = false
-                        val needed = Features.threshold(Settings.sensitivity(context))
-                        line = result.fold(
-                            onSuccess = { best ->
-                                when {
-                                    best == null -> "Heard nothing to compare."
-                                    best.score >= needed -> String.format(Locale.US, "Match. %.2f, needs %.2f.", best.score, needed)
-                                    else -> String.format(Locale.US, "No match. %.2f, needs %.2f.", best.score, needed)
-                                }
-                            },
-                            onFailure = { Sounds.describe(it) },
-                        )
                     }
                 },
             ) { Text("Test") }
@@ -202,7 +179,7 @@ suspend fun testSound(context: android.content.Context, soundId: String): String
     val result = withContext(Dispatchers.Default) {
         runCatching {
             val enrolled = Sounds.enrolled(context).filter { it.id == soundId }
-            Sounds.matcher(context).scoreRecording(pcm, enrolled)
+            Sounds.matcher(context).scoreRecording(pcm, enrolled, Settings.matchMode(context))
         }
     }
     val needed = Features.threshold(Settings.sensitivity(context))
@@ -210,10 +187,13 @@ suspend fun testSound(context: android.content.Context, soundId: String): String
         onSuccess = { best ->
             when {
                 best == null -> "Heard nothing to compare."
-                best.score >= needed -> String.format(Locale.US, "Match. %.2f, needs %.2f.", best.score, needed)
-                else -> String.format(Locale.US, "No match. %.2f, needs %.2f.", best.score, needed)
+                best.score >= needed -> String.format(Locale.US, "Match. %.2f %s, needs %.2f.", best.score, via(best), needed)
+                else -> String.format(Locale.US, "No match. %.2f %s, needs %.2f.", best.score, via(best), needed)
             }
         },
         onFailure = { Sounds.describe(it) },
     )
 }
+
+private fun via(best: com.verisonder.sondersound.detect.Matcher.Best) =
+    if (best.via == com.verisonder.sondersound.detect.Matcher.Mode.EACH) "take" else "avg"

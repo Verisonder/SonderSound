@@ -27,6 +27,8 @@ object DetectionLog {
         val saved: Boolean,
         /** Saved by hand. Exempt from auto-delete. */
         val pinned: Boolean,
+        /** Which comparison matched: AVERAGE or EACH. */
+        val via: String = "AVERAGE",
     )
 
     private const val MAX_ITEMS = 50
@@ -61,10 +63,10 @@ object DetectionLog {
         }
     }
 
-    fun add(context: Context, sound: String, score: Float, needed: Float, pcm: ShortArray) {
+    fun add(context: Context, sound: String, score: Float, needed: Float, pcm: ShortArray, via: String) {
         load(context)
         val save = Settings.saveClips(context)
-        val item = Detection(UUID.randomUUID().toString(), sound, System.currentTimeMillis(), score, needed, pcm, save, false)
+        val item = Detection(UUID.randomUUID().toString(), sound, System.currentTimeMillis(), score, needed, pcm, save, false, via)
         if (save) write(context, item)
         _items.value = (listOf(item) + _items.value).take(MAX_ITEMS)
     }
@@ -92,6 +94,7 @@ object DetectionLog {
             .put("score", item.score.toDouble())
             .put("needed", item.needed.toDouble())
             .put("pinned", item.pinned)
+            .put("via", item.via)
             .toString()
             .toByteArray(Charsets.UTF_8)
         val buffer = ByteBuffer.allocate(4 + meta.size + item.pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
@@ -118,6 +121,7 @@ object DetectionLog {
             pcm = pcm,
             saved = true,
             pinned = meta.optBoolean("pinned", false),
+            via = meta.optString("via", "AVERAGE"),
         )
     }.getOrNull()
 }

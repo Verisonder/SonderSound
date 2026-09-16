@@ -13,8 +13,17 @@ fun interface Embedder {
  */
 class Matcher(private val embedder: Embedder, private val background: FloatArray) {
 
-    data class Enrolled(val id: String, val name: String, val centroid: FloatArray)
-    data class Best(val id: String, val name: String, val score: Float)
+    /**
+     * AVERAGE compares with the mean of the takes. EACH compares with every take and keeps
+     * the closest. BOTH takes whichever of the two is higher. Replay numbers in DETECTION.md.
+     */
+    enum class Mode { AVERAGE, EACH, BOTH }
+
+    /** [takes] are the per-take directions, already centred and normalised. */
+    data class Enrolled(val id: String, val name: String, val centroid: FloatArray, val takes: List<FloatArray> = emptyList())
+
+    /** [via] is AVERAGE or EACH: which comparison produced [score]. */
+    data class Best(val id: String, val name: String, val score: Float, val via: Mode = Mode.AVERAGE)
 
     private fun speechVectors(window: FloatArray): List<FloatArray> {
         val starts = mutableListOf<Int>()
@@ -39,11 +48,11 @@ class Matcher(private val embedder: Embedder, private val background: FloatArray
     fun enrol(id: String, name: String, takes: List<ShortArray>): Enrolled? {
         val perTake = takes.mapNotNull { takeVector(it) }
         if (perTake.isEmpty()) return null
-        return Enrolled(id, name, Features.normalize(Features.mean(perTake)))
+        return Enrolled(id, name, Features.normalize(Features.mean(perTake)), perTake.map { Features.normalize(it) })
     }
 
     /** Null for silence or when nothing is enrolled. */
-    fun score(window: FloatArray, sounds: List<Enrolled>): Best? {
+    fun score(window: FloatArray, sounds: List<Enrolled>, mode: Mode = Mode.AVERAGE): Best? {
         if (sounds.isEmpty() || !Features.worthEvaluating(window)) return null
         val speech = speechVectors(window)
         if (speech.isEmpty()) return null
@@ -51,15 +60,24 @@ class Matcher(private val embedder: Embedder, private val background: FloatArray
         for (v in speech) {
             val c = Features.centre(v, background)
             for (s in sounds) {
-                val score = Features.dot(c, s.centroid)
-                if (best == null || score > best.score) best = Best(s.id, s.name, score)
+                val candidate = pick(c, s, mode)
+                if (best == null || candidate.score > best.score) best = candidate
             }
         }
         return best
     }
 
+    private fun pick(c: FloatArray, s: Enrolled, mode: Mode): Best {
+        val average = Features.dot(c, s.centroid)
+        if (mode == Mode.AVERAGE || s.takes.isEmpty()) return Best(s.id, s.name, average, Mode.AVERAGE)
+        var each = Float.NEGATIVE_INFINITY
+        for (t in s.takes) each = maxOf(each, Features.dot(c, t))
+        return if (mode == Mode.EACH || each > average) Best(s.id, s.name, each, Mode.EACH)
+        else Best(s.id, s.name, average, Mode.AVERAGE)
+    }
+
     /** Scores a whole recording by stepping the window across it, as listening does. */
-    fun scoreRecording(pcm: ShortArray, sounds: List<Enrolled>): Best? {
+    fun scoreRecording(pcm: ShortArray, sounds: List<Enrolled>, mode: Mode = Mode.AVERAGE): Best? {
         val x = FloatArray(pcm.size + 2 * Features.WINDOW)
         val noise = Features.pad(FloatArray(0), x.size, seed = 11)
         noise.copyInto(x)
@@ -67,7 +85,7 @@ class Matcher(private val embedder: Embedder, private val background: FloatArray
         var best: Best? = null
         var a = 0
         while (a + Features.WINDOW <= x.size) {
-            score(x.copyOfRange(a, a + Features.WINDOW), sounds)?.let {
+            score(x.copyOfRange(a, a + Features.WINDOW), sounds, mode)?.let {
                 if (best == null || it.score > best!!.score) best = it
             }
             a += Features.HOP

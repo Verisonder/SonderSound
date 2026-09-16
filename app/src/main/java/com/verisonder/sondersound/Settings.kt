@@ -20,6 +20,7 @@ object Settings {
     private const val KEEP_HOURS = "keep_hours"
     private const val DARIJA_SCRIPT = "darija_script"
     private const val CHIME = "chime"
+    private const val MATCH_MODE = "match_mode"
     private const val TRANSCRIBE_OK = "transcribe_disclosed"
 
     const val DEFAULT_SENSITIVITY = 0.5f
@@ -79,6 +80,12 @@ object Settings {
             .getOrDefault(Script.ARABIC)
     fun setDarijaScript(context: Context, value: Script) =
         of(context).edit().putString(DARIJA_SCRIPT, value.name).apply()
+
+    fun matchMode(context: Context): com.verisonder.sondersound.detect.Matcher.Mode =
+        runCatching { com.verisonder.sondersound.detect.Matcher.Mode.valueOf(of(context).getString(MATCH_MODE, null) ?: "") }
+            .getOrDefault(com.verisonder.sondersound.detect.Matcher.Mode.AVERAGE)
+    fun setMatchMode(context: Context, value: com.verisonder.sondersound.detect.Matcher.Mode) =
+        of(context).edit().putString(MATCH_MODE, value.name).apply()
 
     fun chime(context: Context): Chime =
         runCatching { Chime.valueOf(of(context).getString(CHIME, null) ?: "") }

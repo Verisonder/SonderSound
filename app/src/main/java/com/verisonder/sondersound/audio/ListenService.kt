@@ -25,6 +25,7 @@ import com.verisonder.sondersound.R
 import com.verisonder.sondersound.Settings
 import com.verisonder.sondersound.clips.DetectionLog
 import com.verisonder.sondersound.detect.Features
+import com.verisonder.sondersound.detect.Matcher
 import com.verisonder.sondersound.detect.Sounds
 import com.verisonder.sondersound.detect.StreamDetector
 import com.verisonder.sondersound.sound.SoundStore
@@ -225,6 +226,7 @@ class ListenService : Service() {
                 matcher = matcher,
                 sounds = { Sounds.enrolled(this) },
                 threshold = { Features.threshold(Settings.sensitivity(this)) },
+                mode = { Settings.matchMode(this) },
             )
         }.getOrElse {
             note(Sounds.describe(it))
@@ -242,18 +244,18 @@ class ListenService : Service() {
                     needed = r.threshold,
                     sounds = Sounds.enrolled(this).size,
                 )
-                if (r.fired && r.best != null) onHeard(r.best.id, r.best.name, r.best.score, r.threshold)
+                if (r.fired && r.best != null) onHeard(r.best.id, r.best.name, r.best.score, r.threshold, r.best.via)
             }
         }
     }
 
-    private fun onHeard(id: String, sound: String, score: Float, needed: Float) {
+    private fun onHeard(id: String, sound: String, score: Float, needed: Float, via: Matcher.Mode) {
         // Snooze silences the alert and keeps nothing.
         if (Settings.snoozeUntil(this) > System.currentTimeMillis()) return
         Alert.fire(this, SoundStore.actions(this, id))
         val all = ring?.snapshot() ?: ShortArray(0)
         val keep = minOf(all.size, CLIP_SECONDS * RATE)
-        DetectionLog.add(this, sound, score, needed, all.copyOfRange(all.size - keep, all.size))
+        DetectionLog.add(this, sound, score, needed, all.copyOfRange(all.size - keep, all.size), via.name)
         postHeard(sound)
     }
 

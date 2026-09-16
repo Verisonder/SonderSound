@@ -349,7 +349,11 @@ private fun DetectionRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(detection.sound, fontSize = 20.sp, fontWeight = FontWeight.Medium)
                 Text(
-                    String.format(Locale.US, "%s · %.2f%s", time, detection.score, if (detection.pinned) " · saved" else ""),
+                    String.format(
+                        Locale.US, "%s · %.2f %s%s", time, detection.score,
+                        if (detection.via == "EACH") "take" else "avg",
+                        if (detection.pinned) " · saved" else "",
+                    ),
                     color = Palette.muted,
                 )
             }

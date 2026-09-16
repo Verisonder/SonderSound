@@ -46,6 +46,7 @@ import com.verisonder.sondersound.Settings
 import com.verisonder.sondersound.audio.ListenService
 import com.verisonder.sondersound.clips.DetectionLog
 import com.verisonder.sondersound.detect.Features
+import com.verisonder.sondersound.detect.Matcher
 import com.verisonder.sondersound.transcribe.Gemini
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -58,6 +59,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     var sensitivity by remember { mutableFloatStateOf(Settings.sensitivity(context)) }
+    var matchMode by remember { mutableStateOf(Settings.matchMode(context)) }
     var seconds by remember { mutableIntStateOf(Settings.bufferSeconds(context)) }
     var saveClips by remember { mutableStateOf(Settings.saveClips(context)) }
     var keepHours by remember { mutableIntStateOf(Settings.keepHours(context)) }
@@ -88,6 +90,18 @@ fun SettingsScreen(onBack: () -> Unit) {
             onValueChange = { sensitivity = it },
             onValueChangeFinished = { Settings.setSensitivity(context, sensitivity) },
         )
+        Option(
+            "Matching",
+            when (matchMode) {
+                Matcher.Mode.AVERAGE -> "One blend of all takes. Best with varied takes."
+                Matcher.Mode.EACH -> "Closest single take. Catches more, and more by mistake."
+                Matcher.Mode.BOTH -> "Whichever is higher."
+            },
+        )
+        Choices(listOf("Average", "Each take", "Both"), matchMode.ordinal) {
+            matchMode = Matcher.Mode.entries[it]
+            Settings.setMatchMode(context, matchMode)
+        }
         Option("What it does", "Set for each sound, in My sounds.")
 
         Section("Last clip")
