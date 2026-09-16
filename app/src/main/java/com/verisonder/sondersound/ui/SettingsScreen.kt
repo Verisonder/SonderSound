@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.verisonder.sondersound.KeyVault
 import com.verisonder.sondersound.Settings
+import com.verisonder.sondersound.audio.ListenService
 
 private const val GET_KEY_URL = "https://aistudio.google.com/apikey"
 
@@ -92,6 +93,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         ) {
             seconds = Settings.BUFFER_CHOICES[it]
             Settings.setBufferSeconds(context, seconds)
+            ListenService.setSeconds(seconds)
         }
 
         Section("Clips")

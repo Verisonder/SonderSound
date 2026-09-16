@@ -1,5 +1,9 @@
 package com.verisonder.sondersound.ui
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
@@ -31,6 +36,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +56,8 @@ import androidx.compose.ui.unit.sp
 import com.verisonder.sondersound.KeyVault
 import com.verisonder.sondersound.R
 import com.verisonder.sondersound.Settings
+import com.verisonder.sondersound.audio.ClipPlayer
+import com.verisonder.sondersound.audio.ListenService
 import java.text.DateFormat
 import java.util.Date
 
@@ -61,13 +69,44 @@ private const val SNOOZE_MS = 60 * 60 * 1000L
 @Composable
 fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
     val context = LocalContext.current
-    var listening by remember { mutableStateOf(Settings.listening(context)) }
+    val service by ListenService.state.collectAsState()
+    val playing by ClipPlayer.playing.collectAsState()
+    var refused by remember { mutableStateOf(false) }
     var snoozeUntil by remember { mutableLongStateOf(Settings.snoozeUntil(context)) }
     val snoozed = snoozeUntil > System.currentTimeMillis()
     val seconds = remember { Settings.bufferSeconds(context) }
     val hasKey = remember { KeyVault.hasGeminiKey(context) }
     val detections = remember { emptyList<Detection>() }
     val time = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
+
+    // The pill shows what the service is doing, not the saved switch.
+    val listening = service.running
+
+    val permissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results[Manifest.permission.RECORD_AUDIO] == true) {
+            refused = false
+            Settings.setListening(context, true)
+            ListenService.start(context)
+        } else {
+            refused = true
+        }
+    }
+
+    fun setListening(on: Boolean) {
+        if (on) {
+            val wanted = buildList {
+                add(Manifest.permission.RECORD_AUDIO)
+                if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            permissions.launch(wanted.toTypedArray())
+        } else {
+            Settings.setListening(context, false)
+            ClipPlayer.stop()
+            ListenService.stop(context)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -107,10 +146,7 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
         Surface(
             shape = RoundedCornerShape(50),
             color = if (listening) Palette.pillOn else Palette.pillOff,
-            modifier = Modifier.fillMaxWidth().clickable {
-                listening = !listening
-                Settings.setListening(context, listening)
-            },
+            modifier = Modifier.fillMaxWidth().clickable { setListening(!listening) },
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 22.dp),
@@ -124,10 +160,7 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
                 )
                 Switch(
                     checked = listening,
-                    onCheckedChange = {
-                        listening = it
-                        Settings.setListening(context, it)
-                    },
+                    onCheckedChange = { setListening(it) },
                     colors = SwitchDefaults.colors(
                         checkedTrackColor = Palette.onPill,
                         checkedThumbColor = Palette.pillOn,
@@ -141,20 +174,45 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
 
         Spacer(Modifier.height(12.dp))
 
-        // The buffer. Play and Transcribe are wired in later steps.
+        // The buffer. Transcribe is wired in a later step.
         Surface(shape = RoundedCornerShape(50), color = Palette.card, modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = {}, enabled = false) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play back")
+                IconButton(
+                    enabled = playing || service.heldSeconds > 0,
+                    onClick = {
+                        if (playing) {
+                            ClipPlayer.stop()
+                        } else {
+                            ListenService.freeze()?.let { ClipPlayer.play(context, it) }
+                        }
+                    },
+                ) {
+                    Icon(
+                        if (playing) Icons.Filled.Close else Icons.Filled.PlayArrow,
+                        contentDescription = if (playing) "Stop" else "Play back",
+                    )
                 }
-                Text("Last $seconds s", fontSize = 20.sp, modifier = Modifier.weight(1f))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Last $seconds s", fontSize = 20.sp)
+                    if (listening && service.heldSeconds < seconds) {
+                        Text("${service.heldSeconds} s so far", color = Palette.muted, fontSize = 13.sp)
+                    }
+                }
                 if (hasKey) {
                     TextButton(onClick = {}, enabled = false) { Text("Transcribe") }
                 }
             }
+        }
+
+        val problem = when {
+            refused -> "Microphone permission is needed."
+            else -> service.note
+        }
+        if (problem != null) {
+            Text(problem, color = Palette.muted, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         }
 
         Spacer(Modifier.height(12.dp))
