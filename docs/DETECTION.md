@@ -1,6 +1,6 @@
 # How detection works
 
-A sound is taught with 5–20 takes. Listening compares the last 1.2 s of audio with those
+A sound is taught with 5–50 takes. Listening compares the last 1.2 s of audio with those
 takes every 240 ms.
 
 ## Pipeline

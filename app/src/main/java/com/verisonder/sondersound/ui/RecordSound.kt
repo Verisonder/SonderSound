@@ -42,7 +42,7 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 /**
- * Teaching the app one sound: a name, then 5 to 20 takes. Used by setup and by My sounds.
+ * Teaching the app one sound: a name, then 5 to 50 takes. Used by setup and by My sounds.
  * A take that is too quiet or clipped is refused and not counted.
  */
 @Composable
