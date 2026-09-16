@@ -2,28 +2,32 @@ package com.verisonder.sondersound.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 
 class MainActivity : ComponentActivity() {
+
+    private enum class Screen { MAIN, SETTINGS, SOUNDS }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    // Placeholder until the main screen lands.
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("SonderSound", style = MaterialTheme.typography.displaySmall)
-                    }
+            SonderTheme {
+                var screen by rememberSaveable { mutableStateOf(Screen.MAIN) }
+                BackHandler(enabled = screen != Screen.MAIN) { screen = Screen.MAIN }
+                when (screen) {
+                    Screen.MAIN -> MainScreen(
+                        onSettings = { screen = Screen.SETTINGS },
+                        onSounds = { screen = Screen.SOUNDS },
+                    )
+                    Screen.SETTINGS -> SettingsScreen(onBack = { screen = Screen.MAIN })
+                    Screen.SOUNDS -> SoundsScreen(onBack = { screen = Screen.MAIN })
                 }
             }
         }
