@@ -48,7 +48,13 @@ Package `com.verisonder.sondersound`. Android. GPL-3.0-only.
 - Errors, one line: key rejected · limit reached · offline.
 - One-time disclosure before first use: clips you transcribe are sent to Google using your key.
 
-## 5. Saved clips (optional)
+## 5. Saved clips
+
+- **Save** on the last-clip card (and in the listening notification) keeps the current 15 or 30 s,
+  encrypted, until the user deletes it. Listed under **Saved clips**: tap plays, long-press selects,
+  delete several or transcribe one.
+
+### Detection clips (optional)
 
 - Setting **Save detection clips**, off by default. "Keep clips after the app closes."
 - Off: clips are in memory, lost on app close or restart.

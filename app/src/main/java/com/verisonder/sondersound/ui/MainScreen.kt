@@ -69,6 +69,7 @@ import com.verisonder.sondersound.Settings
 import com.verisonder.sondersound.audio.ClipPlayer
 import com.verisonder.sondersound.audio.ListenService
 import com.verisonder.sondersound.clips.DetectionLog
+import com.verisonder.sondersound.clips.SavedClips
 import com.verisonder.sondersound.transcribe.Transcriber
 import java.text.DateFormat
 import java.util.Date
@@ -77,7 +78,13 @@ import java.util.Locale
 private const val SNOOZE_MS = 60 * 60 * 1000L
 
 @Composable
-fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
+fun MainScreen(
+    onSettings: () -> Unit,
+    onSounds: () -> Unit,
+    onSaved: () -> Unit,
+    pendingTranscribe: ShortArray? = null,
+    onPendingHandled: () -> Unit = {},
+) {
     val context = LocalContext.current
     val service by ListenService.state.collectAsState()
     val playing by ClipPlayer.playing.collectAsState()
@@ -90,13 +97,24 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
     val hasKey = remember { KeyVault.hasGeminiKey(context) }
     val time = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
     var askDisclosure by remember { mutableStateOf<ShortArray?>(null) }
+    val savedClips by SavedClips.items.collectAsState()
+    var saveLine by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf(emptySet<String>()) }
     // Drop ids that are no longer in the list, for instance trimmed away by a new detection.
     val liveSelection = selected.filterTo(mutableSetOf()) { id -> detections.any { it.id == id } }
 
     BackHandler(enabled = liveSelection.isNotEmpty()) { selected = emptySet() }
 
-    LaunchedEffect(Unit) { DetectionLog.load(context) }
+    LaunchedEffect(Unit) {
+        DetectionLog.load(context)
+        SavedClips.load(context)
+    }
+    LaunchedEffect(saveLine) {
+        if (saveLine != null) {
+            kotlinx.coroutines.delay(2500)
+            saveLine = null
+        }
+    }
 
     // The pill shows what the service is doing, not the saved switch.
     val listening = service.running
@@ -129,6 +147,13 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
 
     fun transcribe(pcm: ShortArray) {
         if (Settings.transcribeDisclosed(context)) Transcriber.start(context, pcm) else askDisclosure = pcm
+    }
+
+    LaunchedEffect(pendingTranscribe) {
+        pendingTranscribe?.let {
+            transcribe(it)
+            onPendingHandled()
+        }
     }
 
     askDisclosure?.let { pcm ->
@@ -237,6 +262,13 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
                         Text("${service.heldSeconds} s so far", color = Palette.muted, fontSize = 13.sp)
                     }
                 }
+                TextButton(
+                    enabled = service.heldSeconds > 0,
+                    onClick = {
+                        val clip = ListenService.freeze()
+                        saveLine = if (clip != null && SavedClips.add(context, clip)) "Saved." else "Could not save."
+                    },
+                ) { Text("Save") }
                 if (hasKey) {
                     TextButton(
                         enabled = service.heldSeconds > 0 && transcript != Transcriber.State.Working,
@@ -246,7 +278,7 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
             }
         }
 
-        val problem = if (refused) "Microphone permission is needed." else service.note
+        val problem = saveLine ?: if (refused) "Microphone permission is needed." else service.note
         if (problem != null) {
             Text(problem, color = Palette.muted, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         }
@@ -270,6 +302,25 @@ fun MainScreen(onSettings: () -> Unit, onSounds: () -> Unit) {
                 Icon(painterResource(R.drawable.ic_bars), contentDescription = null, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(20.dp))
                 Text("My sounds", fontSize = 20.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Palette.card,
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onSaved),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(20.dp))
+                Text("Saved clips", fontSize = 20.sp, modifier = Modifier.weight(1f))
+                if (savedClips.isNotEmpty()) Text("${savedClips.size}", color = Palette.muted, modifier = Modifier.padding(end = 8.dp))
                 Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null)
             }
         }

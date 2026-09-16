@@ -19,11 +19,13 @@ import android.media.MediaRecorder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.verisonder.sondersound.R
 import com.verisonder.sondersound.Settings
 import com.verisonder.sondersound.clips.DetectionLog
+import com.verisonder.sondersound.clips.SavedClips
 import com.verisonder.sondersound.detect.Features
 import com.verisonder.sondersound.detect.Matcher
 import com.verisonder.sondersound.detect.Sounds
@@ -66,6 +68,7 @@ class ListenService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val ACTION_PLAY = "com.verisonder.sondersound.PLAY"
         private const val ACTION_STOP = "com.verisonder.sondersound.STOP"
+        private const val ACTION_SAVE = "com.verisonder.sondersound.SAVE"
 
         private val _state = MutableStateFlow(State())
         val state: StateFlow<State> = _state
@@ -121,6 +124,11 @@ class ListenService : Service() {
         when (intent?.action) {
             ACTION_PLAY -> {
                 freeze()?.let { ClipPlayer.play(this, it) }
+                return START_NOT_STICKY
+            }
+            ACTION_SAVE -> {
+                val ok = freeze()?.let { SavedClips.add(this, it) } == true
+                Toast.makeText(this, if (ok) "Saved" else "Nothing to save", Toast.LENGTH_SHORT).show()
                 return START_NOT_STICKY
             }
             ACTION_STOP -> {
@@ -336,6 +344,9 @@ class ListenService : Service() {
         val stop = PendingIntent.getService(
             this, 2, Intent(this, ListenService::class.java).setAction(ACTION_STOP), flags,
         )
+        val save = PendingIntent.getService(
+            this, 5, Intent(this, ListenService::class.java).setAction(ACTION_SAVE), flags,
+        )
         val seconds = Settings.bufferSeconds(this)
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_bars)
@@ -343,6 +354,7 @@ class ListenService : Service() {
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(0, "Play last $seconds s", play)
+            .addAction(0, "Save", save)
             .addAction(0, "Stop", stop)
             .build()
     }

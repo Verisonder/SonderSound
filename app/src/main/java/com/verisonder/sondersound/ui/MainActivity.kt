@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -20,7 +21,7 @@ import com.verisonder.sondersound.audio.ListenService
 
 class MainActivity : ComponentActivity() {
 
-    private enum class Screen { SETUP, MAIN, SETTINGS, SOUNDS }
+    private enum class Screen { SETUP, MAIN, SETTINGS, SOUNDS, SAVED }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,7 +37,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val first = if (Settings.setupDone(this)) Screen.MAIN else Screen.SETUP
                     var screen by rememberSaveable { mutableStateOf(first) }
-                    BackHandler(enabled = screen == Screen.SETTINGS || screen == Screen.SOUNDS) {
+                    var pendingTranscribe by remember { mutableStateOf<ShortArray?>(null) }
+                    BackHandler(enabled = screen == Screen.SETTINGS || screen == Screen.SOUNDS || screen == Screen.SAVED) {
                         screen = Screen.MAIN
                     }
                     when (screen) {
@@ -47,9 +49,21 @@ class MainActivity : ComponentActivity() {
                         Screen.MAIN -> MainScreen(
                             onSettings = { screen = Screen.SETTINGS },
                             onSounds = { screen = Screen.SOUNDS },
+                            onSaved = { screen = Screen.SAVED },
+                            pendingTranscribe = pendingTranscribe,
+                            onPendingHandled = { pendingTranscribe = null },
                         )
                         Screen.SETTINGS -> SettingsScreen(onBack = { screen = Screen.MAIN })
                         Screen.SOUNDS -> SoundsScreen(onBack = { screen = Screen.MAIN })
+                        Screen.SAVED -> SavedScreen(
+                            onBack = { screen = Screen.MAIN },
+                            onTranscribe = { pcm ->
+                                // Handed to the main screen, which shows the transcript and asks
+                                // for the one-time notice if it has not been accepted yet.
+                                pendingTranscribe = pcm
+                                screen = Screen.MAIN
+                            },
+                        )
                     }
                 }
             }
