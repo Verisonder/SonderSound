@@ -1,0 +1,72 @@
+# SonderSound — Specification
+
+Package `com.verisonder.sondersound`. Android. GPL-3.0-only.
+
+## 1. Detection
+
+- The user enrols a custom sound by recording samples: a name, a doorbell, anything. No per-user
+  model training; enrolment stores audio embeddings and the live sound is compared against them.
+- Voice-activity gate runs first; the matcher only runs on speech or sound energy.
+- Listening uses the **phone microphone**, not the earbuds (earbud mics force call mode and ruin music).
+- On a match: duck or pause music, play a chime in the earphones.
+- Language-independent. Works for any name in any language.
+- Per-sound sensitivity.
+
+## 2. The buffer
+
+- Rolling buffer of the last **15 or 30 seconds**, user's choice. Only that much is held.
+- Held **in memory only**. Never written to disk unless the user saves a clip (§5).
+- 30 → 15 drops the older half at once. 15 → 30 fills from the moment of the switch; the screen shows
+  how many seconds are actually held.
+- On trigger the clip is frozen; the rolling buffer keeps recording separately.
+- Triggers: main screen, quick-settings tile, notification action, earbud long-press (to be tested).
+
+## 3. Play back
+
+- Plays the frozen clip in the earphones, from memory. Offline. Any language.
+
+## 4. Transcribe (optional)
+
+- Only shown once the user has saved a Gemini API key. No backend: the app calls Gemini directly.
+- Key checked with one call when pasted. Stored with Android Keystore encryption, excluded from backups.
+- "Get a key" link to Google AI Studio.
+- Clip compressed to Opus, sent inline, runs in the background.
+- Prompt: verbatim, no translation or summary; keep code-switching as spoken; `[unclear]` for
+  unclear parts. Setting for Darija script: Arabic script or Latin (Arabizi).
+- Offline: keep in memory, retry on reconnect, discard after a limit. Never to disk.
+- Errors, one line: key rejected · limit reached · offline.
+- One-time disclosure before first use: clips you transcribe are sent to Google using your key.
+
+## 5. Saved clips (optional)
+
+- Setting **Save detection clips**, off by default. "Keep clips after the app closes."
+- Off: clips are in memory, lost on app close or restart.
+- On: saved encrypted in app-private storage, auto-deleted after 1 h · 24 h · 7 days · never.
+- Long-press a clip: Save (exempt from auto-delete) or Delete. "Delete all clips" button.
+
+## 6. Layout
+
+Modelled on Google Sound Notifications.
+
+Main screen: snooze (top left), settings gear (top right), title, big **On/Off** toggle, buffer card
+(▶ Last N s · Transcribe), **My sounds** row, list of detections with time and ▶.
+
+Behind the gear: buffer length, Gemini key, Darija script, chime, sensitivity, music ducking, earbud
+shortcut, save clips, auto-delete, delete all.
+
+## 7. Rules carried from SonderAssist
+
+- On-screen text: one short line per option, two at most.
+- Everything optional is off by default.
+- Anything that can fail silently shows what it did on screen.
+- Detector changes are replayed against recordings before they ship.
+
+## 8. Play Store
+
+- Microphone foreground-service declaration; prominent disclosure before the mic starts.
+- Data Safety: audio stays on device; transcription clips go to Google only on request.
+
+## 9. First step
+
+Python prototype of the detector against recordings from a real phone: the name from ~10 people at
+1–5 m, ~30 min of ordinary noise with no name, and near-misses. Measure false alerts before Android code.
