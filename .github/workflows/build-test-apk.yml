@@ -4,6 +4,9 @@ on:
   push:
     branches: ['test/**']
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,10 +39,10 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: gradle --no-daemon assembleRelease
-      - name: Publish to the artifacts repository
+      - name: Publish as a pre-release in this repository
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.ARTIFACTS_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           SLUG=$(echo "${GITHUB_REF_NAME#test/}" | tr '/' '-')
           APK=$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)
@@ -48,31 +51,29 @@ jobs:
             exit 1
           fi
           cp "$APK" "SonderSound-$SLUG.apk"
-          gh release delete "test-$SLUG" --repo Verisonder/vs-artifacts --yes --cleanup-tag || true
+          gh release delete "test-$SLUG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
           gh release create "test-$SLUG" "SonderSound-$SLUG.apk" \
-            --repo Verisonder/vs-artifacts \
-            --title "SonderSound $SLUG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "SonderSound test: $SLUG" \
             --notes "Test build from $GITHUB_REF_NAME at $GITHUB_SHA"
 
       - name: Report the failure
         if: failure()
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.ARTIFACTS_PAT }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_STORE_FILE: ${{ runner.temp }}/release.jks
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          # CI logs are not fetchable from the assistant's container, so the error is
-          # written where the API can read it rather than being guessed at.
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::ARTIFACTS_PAT is not set, so the failure was not reported."
-            exit 0
-          fi
+          # CI logs are not fetchable from outside, so the error is attached to a
+          # pre-release called ci-failure in this repository, where the API can read it.
           gradle --no-daemon assembleRelease > out.txt 2>&1 || true
-          SHA=$(gh api repos/Verisonder/vs-artifacts/contents/failures/latest.txt --jq .sha 2>/dev/null || true)
-          gh api -X PUT repos/Verisonder/vs-artifacts/contents/failures/latest.txt \
-            -f message="SonderSound release build failure on $GITHUB_REF_NAME" \
-            -f content="$(base64 -w0 out.txt)" \
-            ${SHA:+-f sha="$SHA"}
+          gh release view ci-failure --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create ci-failure --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "Last CI failure" --notes "Replaced on every failed build."
+          echo "$GITHUB_WORKFLOW on $GITHUB_REF_NAME at $GITHUB_SHA" | cat - out.txt > failure.txt
+          gh release upload ci-failure failure.txt --repo "$GITHUB_REPOSITORY" --clobber

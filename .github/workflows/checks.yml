@@ -5,6 +5,9 @@ on:
     branches: [main, 'test/**']
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -28,16 +31,13 @@ jobs:
         if: failure()
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.ARTIFACTS_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # CI logs are not fetchable from the assistant's container, so the compiler
-          # error is written where the API can read it rather than being guessed at.
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::ARTIFACTS_PAT is not set, so the failure was not reported."
-            exit 0
-          fi
-          SHA=$(gh api repos/Verisonder/vs-artifacts/contents/failures/latest.txt --jq .sha 2>/dev/null || true)
-          gh api -X PUT repos/Verisonder/vs-artifacts/contents/failures/latest.txt \
-            -f message="SonderSound checks failure on $GITHUB_REF_NAME" \
-            -f content="$(base64 -w0 build-output.txt)" \
-            ${SHA:+-f sha="$SHA"}
+          # CI logs are not fetchable from outside, so the error is attached to a
+          # pre-release called ci-failure in this repository, where the API can read it.
+          cp build-output.txt out.txt
+          gh release view ci-failure --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create ci-failure --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "Last CI failure" --notes "Replaced on every failed build."
+          echo "$GITHUB_WORKFLOW on $GITHUB_REF_NAME at $GITHUB_SHA" | cat - out.txt > failure.txt
+          gh release upload ci-failure failure.txt --repo "$GITHUB_REPOSITORY" --clobber
