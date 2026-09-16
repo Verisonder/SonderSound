@@ -14,7 +14,7 @@ Package `com.verisonder.sondersound`. Android. GPL-3.0-only.
 ### Setup (first launch, and "Add sound" in My sounds)
 
 1. Name the sound.
-2. Record it 5–8 times. Different distances and voice levels.
+2. Record it 5–20 times. Different distances and voice levels.
 3. Optional: hand the phone to someone else to record it too.
 4. Test: say it once more; the app shows whether it matched.
 5. Optional calibration: listen to the room for a minute and set the threshold above what it hears.

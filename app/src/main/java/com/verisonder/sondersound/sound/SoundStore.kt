@@ -47,7 +47,7 @@ object SoundStore {
     data class Take(val number: Int, val pcm: ShortArray)
 
     const val MIN_TAKES = 5
-    const val MAX_TAKES = 8
+    const val MAX_TAKES = 20
 
     /**
      * Changes whenever a sound or take is added or removed, so the detector knows to
