@@ -185,3 +185,35 @@ fun RecordSound(onDone: () -> Unit, secondary: String, onSecondary: () -> Unit) 
         }
     }
 }
+
+/** Records one take and judges it. The take is null when it should not be kept; the line says why. */
+suspend fun recordCheckedTake(): Pair<ShortArray?, String> {
+    val pcm = runCatching { TakeRecorder.record() }.getOrNull() ?: return null to "Microphone unavailable."
+    return when (TakeCheck.judge(pcm)) {
+        TakeCheck.Verdict.TOO_QUIET -> null to "Too quiet. Try again."
+        TakeCheck.Verdict.TOO_LOUD -> null to "Too loud. Try again."
+        TakeCheck.Verdict.OK -> pcm to "Take kept."
+    }
+}
+
+/** Records 2 s and scores it against one sound. Returns the line to show. */
+suspend fun testSound(context: android.content.Context, soundId: String): String {
+    val pcm = runCatching { TakeRecorder.record() }.getOrNull() ?: return "Microphone unavailable."
+    val result = withContext(Dispatchers.Default) {
+        runCatching {
+            val enrolled = Sounds.enrolled(context).filter { it.id == soundId }
+            Sounds.matcher(context).scoreRecording(pcm, enrolled)
+        }
+    }
+    val needed = Features.threshold(Settings.sensitivity(context))
+    return result.fold(
+        onSuccess = { best ->
+            when {
+                best == null -> "Heard nothing to compare."
+                best.score >= needed -> String.format(Locale.US, "Match. %.2f, needs %.2f.", best.score, needed)
+                else -> String.format(Locale.US, "No match. %.2f, needs %.2f.", best.score, needed)
+            }
+        },
+        onFailure = { Sounds.describe(it) },
+    )
+}

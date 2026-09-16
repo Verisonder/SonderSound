@@ -1,5 +1,7 @@
 package com.verisonder.sondersound.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +38,14 @@ fun SoundsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var sounds by remember { mutableStateOf(SoundStore.list(context)) }
     var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<String?>(null) }
+
+    // Registered after the activity's handler, so it wins: back leaves the editor first.
+    BackHandler(enabled = adding || editing != null) {
+        adding = false
+        editing = null
+        sounds = SoundStore.list(context)
+    }
 
     Column(
         modifier = Modifier
@@ -44,9 +54,31 @@ fun SoundsScreen(onBack: () -> Unit) {
             .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        TopBar(if (adding) "Add sound" else "My sounds", onBack = {
-            if (adding) adding = false else onBack()
-        })
+        TopBar(
+            when {
+                adding -> "Add sound"
+                editing != null -> "Edit sound"
+                else -> "My sounds"
+            },
+            onBack = {
+                when {
+                    adding -> adding = false
+                    editing != null -> {
+                        editing = null
+                        sounds = SoundStore.list(context)
+                    }
+                    else -> onBack()
+                }
+            },
+        )
+
+        editing?.let { id ->
+            SoundDetail(soundId = id, onDeleted = {
+                editing = null
+                sounds = SoundStore.list(context)
+            })
+            return@Column
+        }
 
         if (adding) {
             Column(modifier = Modifier.padding(horizontal = 8.dp)) {
@@ -69,7 +101,7 @@ fun SoundsScreen(onBack: () -> Unit) {
             Surface(
                 shape = RoundedCornerShape(28.dp),
                 color = Palette.card,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable { editing = sound.id },
             ) {
                 Row(
                     modifier = Modifier.padding(start = 24.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
@@ -77,7 +109,7 @@ fun SoundsScreen(onBack: () -> Unit) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(sound.name, fontSize = 20.sp)
-                        Text("${sound.takes} takes", color = Palette.muted, fontSize = 14.sp)
+                        Text("${sound.takes} takes · tap to edit", color = Palette.muted, fontSize = 14.sp)
                     }
                     IconButton(onClick = {
                         SoundStore.delete(context, sound.id)

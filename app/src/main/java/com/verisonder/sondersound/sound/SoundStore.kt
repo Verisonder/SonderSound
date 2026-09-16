@@ -15,6 +15,9 @@ object SoundStore {
 
     data class Sound(val id: String, val name: String, val takes: Int)
 
+    /** One recorded take. [number] is stable: deleting another take does not renumber it. */
+    data class Take(val number: Int, val pcm: ShortArray)
+
     const val MIN_TAKES = 5
     const val MAX_TAKES = 8
 
@@ -52,18 +55,35 @@ object SoundStore {
 
     fun addTake(context: Context, id: String, pcm: ShortArray) {
         val folder = dir(context, id)
-        val next = takeFiles(folder).size + 1
+        // Highest number plus one, not count plus one: after deleting take 2 of 4, count+1
+        // would overwrite take 4.
+        val next = (takeFiles(folder).maxOfOrNull { number(it) } ?: 0) + 1
         val bytes = ByteBuffer.allocate(pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
         bytes.asShortBuffer().put(pcm)
         File(folder, "take_$next.pcm").writeBytes(bytes.array())
         bump(context)
     }
 
-    fun takes(context: Context, id: String): List<ShortArray> =
+    fun takes(context: Context, id: String): List<ShortArray> = numberedTakes(context, id).map { it.pcm }
+
+    fun numberedTakes(context: Context, id: String): List<Take> =
         takeFiles(dir(context, id)).map { file ->
             val buffer = ByteBuffer.wrap(file.readBytes()).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-            ShortArray(buffer.remaining()).also { buffer.get(it) }
+            Take(number(file), ShortArray(buffer.remaining()).also { buffer.get(it) })
         }
+
+    fun name(context: Context, id: String): String? =
+        File(dir(context, id), "name.txt").takeIf { it.exists() }?.readText()
+
+    fun rename(context: Context, id: String, name: String) {
+        File(dir(context, id), "name.txt").writeText(name.trim())
+        bump(context)
+    }
+
+    fun deleteTake(context: Context, id: String, number: Int) {
+        File(dir(context, id), "take_$number.pcm").delete()
+        bump(context)
+    }
 
     fun removeLastTake(context: Context, id: String) {
         takeFiles(dir(context, id)).lastOrNull()?.delete()
@@ -75,8 +95,10 @@ object SoundStore {
         bump(context)
     }
 
+    private fun number(file: File): Int = file.name.removePrefix("take_").removeSuffix(".pcm").toIntOrNull() ?: 0
+
     private fun takeFiles(folder: File): List<File> =
         folder.listFiles { f -> f.name.startsWith("take_") && f.name.endsWith(".pcm") }
             .orEmpty()
-            .sortedBy { it.name.removePrefix("take_").removeSuffix(".pcm").toIntOrNull() ?: 0 }
+            .sortedBy { number(it) }
 }

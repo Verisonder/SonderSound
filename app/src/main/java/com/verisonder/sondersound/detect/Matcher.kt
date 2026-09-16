@@ -26,15 +26,18 @@ class Matcher(private val embedder: Embedder, private val background: FloatArray
         return vectors.filterIndexed { i, _ -> i < mask.size && mask[i] }
     }
 
+    /** One take as a centred, normalised direction, or null if it holds no sound. */
+    fun takeVector(take: ShortArray): FloatArray? {
+        val x = Features.pad(Features.trim(FloatArray(take.size) { take[it].toFloat() }))
+        val window = if (x.size > Features.WINDOW) x.copyOfRange(0, Features.WINDOW) else x
+        val speech = speechVectors(window)
+        val all = if (speech.isNotEmpty()) speech else embedder.embed(window) { Features.embeddingStarts(it) }
+        return if (all.isEmpty()) null else Features.centre(Features.mean(all), background)
+    }
+
     /** Null if no take had any sound in it. */
     fun enrol(id: String, name: String, takes: List<ShortArray>): Enrolled? {
-        val perTake = takes.mapNotNull { take ->
-            val x = Features.pad(Features.trim(FloatArray(take.size) { take[it].toFloat() }))
-            val window = if (x.size > Features.WINDOW) x.copyOfRange(0, Features.WINDOW) else x
-            val speech = speechVectors(window)
-            val all = if (speech.isNotEmpty()) speech else embedder.embed(window) { Features.embeddingStarts(it) }
-            if (all.isEmpty()) null else Features.centre(Features.mean(all), background)
-        }
+        val perTake = takes.mapNotNull { takeVector(it) }
         if (perTake.isEmpty()) return null
         return Enrolled(id, name, Features.normalize(Features.mean(perTake)))
     }
@@ -70,5 +73,20 @@ class Matcher(private val embedder: Embedder, private val background: FloatArray
             a += Features.HOP
         }
         return best
+    }
+
+    companion object {
+        /**
+         * How well each take agrees with the others: the cosine between it and the mean of
+         * all the other takes. A take recorded badly scores well below the rest. Null for a
+         * sound with fewer than two takes.
+         */
+        fun agreement(vectors: List<FloatArray>): List<Float>? {
+            if (vectors.size < 2) return null
+            return vectors.indices.map { i ->
+                val others = Features.normalize(Features.mean(vectors.filterIndexed { j, _ -> j != i }))
+                Features.dot(Features.normalize(vectors[i]), others)
+            }
+        }
     }
 }
